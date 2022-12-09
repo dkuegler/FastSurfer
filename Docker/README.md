@@ -10,6 +10,23 @@ In order to run the whole FastSurfer pipeline or the surface part, you need a va
 
 Note, in order to run our Docker containers on a Mac, users need to increase docker memory to 10 GB by overwriting the settings under Docker Desktop --> Preferences --> Resources --> Advanced (slide the bar under Memory to 10 GB; see: [docker for mac](https://docs.docker.com/docker-for-mac/) for details). Also for the new M1 Chip, try adding ´--platform linux/x86_64´ to the build and run commands below. 
 
+### General build settings
+The Dockerfile also supports additional build-args and targets:
+- `--build-arg DEVICE=cuda` (default) build with cuda/nVidia support for segmentation
+- `--build-arg DEVICE=cpu` build for segmentation on the cpu
+- `--build-arg DEVICE=amd` build for amd rocm support for segmentation (experimental/alpha)
+- `--build-arg DEVICE=none` build without support for segmentation
+- `--build-arg FREESURFER=pruned` (default) install Freesurfer for the recon-surf pipeline
+- `--build-arg FREESURFER=none` do not install Freesurfer; recon-surf pipeline not supported, but much smaller image
+- `--target runtime` standard `run_fastsurfer.sh` entrypoint (use for both seg and surf) 
+- `--target runtime_seg_only` entrypoint changed to `FastSurferCNN/run_prediction.py` (use for seg only) 
+- `--target runtime_surf_only` standard `reconsurf/recon-surf.sh` entrypoint (use for surf only) 
+
+Note: a couple of combinations will lead to errors, `DEVICE=none` NEVER supports the segmentation and should mostly be 
+used with `--target runtime_surf_only`. `--build-arg FREESURFER=none` NEVER supports the surface pipeline and should mostly 
+be used with `--target runtime_seg_only`.
+
+
 
 ### Example 1: Pull FastSurfer container 
 
@@ -50,7 +67,7 @@ In order to build the docker image for FastSurfer (FastSurferCNN + recon-surf; o
 
 ```bash
 cd ..
-docker build --rm=true -t deepmi/fastsurfer:gpu-v2.0.0 -f ./Docker/Dockerfile .
+docker build --rm=true --target runtime -t deepmi/fastsurfer:gpu-v2.0.0 -f ./Docker/Dockerfile .
 ```
 
 For running the analysis, the command is basically the same as above for the prebuild option:
@@ -70,7 +87,7 @@ In order to build the docker image for FastSurfer (FastSurferCNN + recon-surf; o
 
 ```bash
 cd ..
-docker build --rm=true -t deepmi/fastsurfer:cpu-v2.0.0 -f ./Docker/Dockerfile_CPU .
+docker build --rm=true --target runtime --build-arg DEVICE=cpu -t deepmi/fastsurfer:cpu-v2.0.0 -f ./Docker/Dockerfile .
 ```
 
 For running the analysis, the command is basically the same as above for the GPU option:
@@ -94,7 +111,7 @@ In order to build the docker image for FastSurferCNN (segmentation only; on GPU;
 
 ```bash
 cd ..
-docker build --rm=true -t deepmi/fastsurfer:gpu-segonly-v2.0.0 -f ./Docker/Dockerfile_FastSurferCNN .
+docker build --rm=true --target runtime_seg_only --build_arg FREESURFER=none -t deepmi/fastsurfer:gpu-segonly-v2.0.0 -f ./Docker/Dockerfile .
 ```
 
 For running the analysis, start the container (e.g. to run segmentation on __all__ subjects (scans named orig.mgz inside /home/user/my_mri_data/subjectX/mri/):
@@ -121,7 +138,7 @@ In order to build the docker image for FastSurferCNN (segmentation only; on CPU;
 
 ```bash
 cd ..
-docker build --rm=true -t deepmi/fastsurfer:cpu-segonly-v2.0.0 -f ./Docker/Dockerfile_FastSurferCNN_CPU .
+docker build --rm=true --target runtime_seg_only --build-arg DEVICE=cpu --build-arg FREESURFER=none -t deepmi/fastsurfer:cpu-segonly-v2.0.0 -f ./Docker/Dockerfile .
 ```
 
 For running the analysis, start the container (e.g. to run segmentation on __all__ subjects (scans named orig.mgz inside /home/user/my_mri_data/subjectX/mri/):
@@ -143,7 +160,7 @@ In order to build the docker image for FastSurfer recon-surf (surface pipeline o
 
 ```bash
 cd ..
-docker build --rm=true -t deepmi/fastsurfer:cpu-surfonly-v2.0.0 -f ./Docker/Dockerfile_reconsurf .
+docker build --rm=true- -target runtime_surf_only --build-arg DEVICE=none -t deepmi/fastsurfer:cpu-surfonly-v2.0.0 -f ./Docker/Dockerfile .
 ```
 
 For running the analysis, start the container (e.g. to run segmentation on __all__ subjects (scans named orig.mgz inside /home/user/my_mri_data/subjectX/mri/):
@@ -176,7 +193,7 @@ https://docs.amd.com/bundle/ROCm-Installation-Guide-v5.2.3/page/Introduction_to_
 
 ```bash
 cd ..
-docker build --rm=true -t deepmi/fastsurfer:gpu-amd-v2.0.0 -f ./Docker/Dockerfile_FastSurferCNN_AMD .
+docker build --rm=true --target runtime --device=amd -t deepmi/fastsurfer:gpu-amd-v2.0.0 -f ./Docker/Dockerfile .
 ```
 
 and run segmentation only:

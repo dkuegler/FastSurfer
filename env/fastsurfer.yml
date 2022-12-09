@@ -1,4 +1,4 @@
-name: fastsurfer_gpu
+name: fastsurfer
 
 channels:
   - pytorch
@@ -6,7 +6,6 @@ channels:
   - conda-forge
   
 dependencies:
-  - cudatoolkit=11.3
   - h5py=3.7.0
   - matplotlib=3.5.1
   - pytorch=1.10.0 

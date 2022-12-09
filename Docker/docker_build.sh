@@ -1,3 +1,3 @@
 #!/bin/bash
 cd ..
-docker build --rm=true -t fastsurfer:gpu -f ./Docker/Dockerfile .
+DOCKER_BUILDKIT=1 docker build --rm=true --target runtime --build-arg DEVICE=cuda --build-arg FREESURFER=pruned -t fastsurfer:gpu -f ./Docker/Dockerfile .
