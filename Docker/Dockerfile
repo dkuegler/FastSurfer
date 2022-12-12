@@ -104,6 +104,7 @@ RUN mkdir /opt/freesurfer && echo "FreeSurfer is not installed in this Docker im
 
 FROM ubuntu:20.04 AS base_cuda
 FROM ubuntu:20.04 AS base_cpu
+FROM ubuntu:20.04 AS base_none
 
 ## Start the amd image with rocm/pytorch latest
 FROM rocm/pytorch AS base_amd
