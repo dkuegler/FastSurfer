@@ -66,7 +66,7 @@ RUN conda install cudatoolkit=11.3  # this should already be satisfied through d
 ENV DEVICE=cuda
 
 
-FROM build_conda_base AS build_conda_cpu
+FROM build_conda_common AS build_conda_cpu
 # install additional packages for cpu
 RUN conda install --channel pytorch cpuonly=1.0
 
