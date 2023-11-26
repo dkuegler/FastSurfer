@@ -23,13 +23,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Literal, TypeVar, cast
 
-# Group 2: Internal modules
-import image_io as iio
-
-# Group 3: External modules
+# Group 2: External modules
 import numpy as np
-import SimpleITK as sitk
 from numpy import typing as npt
+import SimpleITK as sitk
+
+# Group 3: Internal modules
+import image_io as iio
 
 HELPTEXT = """
 
@@ -101,7 +101,7 @@ HELP_LEVELS = "<int> number of fitting levels, default: 4"
 HELP_NUM_ITER = "<int> max number of iterations per level, default: 50"
 HELP_THRESHOLD = "<float> convergence threshold, default: 0.0"
 HELP_TALAIRACH = "<Path> file name of talairach.xfm if using this for finding origin"
-HELP_THREADS = "<int> number of threads, default: 1"
+HELP_THREADS = "<int> number of threads, default: (non-strict), default: <all available threads>"
 LiteralSkipRescaling = Literal["skip rescaling"]
 SKIP_RESCALING: LiteralSkipRescaling = "skip rescaling"
 LiteralDoNotSave = Literal["do not save"]
@@ -222,7 +222,7 @@ def options_parse():
         "--threads",
         dest="threads",
         help=HELP_THREADS,
-        default=1,
+        default=-1,
         type=int,
     )
     parser.add_argument(
@@ -622,7 +622,7 @@ def main(
     outvol: LiteralDoNotSave | Path = DO_NOT_SAVE,
     rescalevol: LiteralSkipRescaling | Path = SKIP_RESCALING,
     dtype: str = "keep",
-    threads: int = 1,
+    threads: int = -1,
     mask: Path | None = None,
     aseg: Path | None = None,
     shrink: int = 4,
@@ -639,7 +639,8 @@ def main(
         )
 
     # set number of threads
-    sitk.ProcessObject.SetGlobalDefaultNumberOfThreads(threads)
+    if threads > 0:
+        sitk.ProcessObject.SetGlobalDefaultNumberOfThreads(threads)
 
     # read image (only nii supported) and convert to float32
     logger.debug(f"reading input volume {invol}")

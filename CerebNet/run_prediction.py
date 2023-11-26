@@ -173,7 +173,7 @@ def main(args: argparse.Namespace) -> int | str:
     try:
         tester = Inference(
             cfg,
-            threads=getattr(args, "threads", 1),
+            threads=getattr(args, "threads", -1),
             device=args.device,
             viewagg_device=args.viewagg_device,
             orientation=args.orientation,
