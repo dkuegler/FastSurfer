@@ -561,7 +561,7 @@ then
                           --subject_list /data/scripts/subject_list
                           --statusfile /data/scripts/subject_success
                           # run_fastsurfer options (inside singularity)
-                          --sd "/data/cases" --threads "$num_cpus_per_task"
+                          --sd "/data/cases"
                           --seg_only "${POSITIONAL_FASTSURFER[@]}")
 
   seg_cmd_filename=$hpc_work/scripts/slurm_cmd_seg.sh

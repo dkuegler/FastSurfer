@@ -67,7 +67,8 @@ vox_size="min"
 run_asegdkt_module="1"
 run_cereb_module="1"
 run_hypvinn_module="1"
-threads="1"
+threads_seg=()
+threads_surf=()
 # python3.10 -s excludes user-directory package inclusion
 python="python3.10 -s"
 allow_root=()
@@ -158,6 +159,9 @@ SEGMENTATION PIPELINE:
   --tal_reg               Perform the talairach registration for eTIV estimates
                             in --seg_only stream and stats files (is affected by
                             the --3T flag, see below).
+  --threads <int|seg=int> Set target thread count to <int> (default: unconstrained,
+                            to only change the target thread count for the segmentation
+                            pipeline, prepend 'seg=').
 
   MODULES:
   By default, all modules are run.
@@ -216,7 +220,11 @@ SURFACE PIPELINE:
   --3T                    Use the 3T atlas for talairach registration (gives better
                             etiv estimates for 3T MR images, default: 1.5T atlas).
   --parallel              Run both hemispheres in parallel
-  --threads <int>         Set openMP and ITK threads to <int>
+  --threads <int|surf=int>
+                          Set target thread count to <int> (surface pipeline default: 1,
+                            or 2 if --parallel; to only change the thread count for the
+                            surface pipeline, prepend 'surf=').
+
 
 Resource Options:
   --device                Set device on which inference should be run ("cpu" for
@@ -341,7 +349,14 @@ case $key in
   --vox_size) vox_size="$1" ; shift ;;
   # --3t: both for surface pipeline and the --tal_reg flag
   --3t) surf_flags=("${surf_flags[@]}" "--3T") ; atlas3T="true" ;;
-  --threads) threads="$1" ; shift ;;
+  --threads)
+    if [[ "$1" =~ ^seg=-?\d+$ ]] ; then threads_seg=("--threads" "${1:4}")
+    elif [[ "$1" =~ ^surf=-?\d+$ ]] ; then threads_surf=("--threads" "${1:5}")
+    elif [[ "$1" =~ ^-?\d+$ ]] ; then threads_seg=("--threads" "$1") ; threads_surf=("--threads" "$1")
+    else echo "Invalid argument for the threads parameter, must be <int|seg=int|surf=int>"; exit 1
+    fi
+    shift
+    ;;
   --py) python="$1" ; shift ;;
   -h|--help) usage ; exit ;;
   --version)
@@ -761,7 +776,8 @@ then
          --asegdkt_segfile "$asegdkt_segfile" --conformed_name "$conformed_name"
          --brainmask_name "$mask_name" --aseg_name "$aseg_segfile" --sid "$subject"
          --seg_log "$seg_log" --vox_size "$vox_size" --batch_size "$batch_size"
-         --viewagg_device "$viewagg" --device "$device" "${allow_root[@]}")
+         --viewagg_device "$viewagg" --device "$device" "${allow_root[@]}"
+         "${threads_seg[@]}")
     # specify the subject dir $sd, if asegdkt_segfile explicitly starts with it
     if [[ "$sd" == "${asegdkt_segfile:0:${#sd}}" ]]; then cmd=("${cmd[@]}" --sd "$sd"); fi
     echo_quoted "${cmd[@]}" | tee -a "$seg_log"
@@ -799,7 +815,7 @@ then
     {
       # this will always run, since norm_name is set to subject_dir/mri/orig_nu.mgz, if it is not passed/empty
       cmd=($python "${reconsurfdir}/N4_bias_correct.py" "--in" "$conformed_name"
-           --rescale "$norm_name" --aseg "$asegdkt_segfile" --threads "$threads")
+           --rescale "$norm_name" --aseg "$asegdkt_segfile" "${threads_seg[@]}")
       echo "INFO: Running N4 bias-field correction"
       echo_quoted "${cmd[@]}"
       "${cmd[@]}" 2>&1
@@ -829,7 +845,7 @@ then
     then
       cmd=($python "${fastsurfercnndir}/segstats.py" --segfile "$asegdkt_segfile"
            --segstatsfile "$asegdkt_statsfile" --normfile "$norm_name"
-           --threads "$threads" "${allow_root[@]}" --empty --excludeid 0
+           "${threads_seg[@]}" "${allow_root[@]}" --empty --excludeid 0
            --sd "${sd}" --sid "${subject}"
            --ids 2 4 5 7 8 10 11 12 13 14 15 16 17 18 24 26 28 31 41 43 44 46 47
                  49 50 51 52 53 54 58 60 63 77 251 252 253 254 255 1002 1003 1005
@@ -868,7 +884,7 @@ then
     then
       # ... we have a t2 image, bias field-correct it (save robustly scaled uchar)
       cmd=($python "${reconsurfdir}/N4_bias_correct.py" "--in" "$copy_name_T2"
-           --out "$norm_name_t2" --threads "$threads" --uchar)
+           --out "$norm_name_t2" "${threads_seg[@]}" --uchar)
       {
         echo "INFO: Running N4 bias-field correction of the t2"
         echo_quoted "${cmd[@]}"
@@ -907,7 +923,7 @@ then
          --asegdkt_segfile "$asegdkt_segfile" --conformed_name "$conformed_name"
          --cereb_segfile "$cereb_segfile" --seg_log "$seg_log" --async_io
          --batch_size "$batch_size" --viewagg_device "$viewagg" --device "$device"
-         --threads "$threads" "${cereb_flags[@]}" "${allow_root[@]}")
+         "${threads_seg[@]}" "${cereb_flags[@]}" "${allow_root[@]}")
     # specify the subject dir $sd, if asegdkt_segfile explicitly starts with it
     if [[ "$sd" == "${cereb_segfile:0:${#sd}}" ]] ; then cmd=("${cmd[@]}" --sd "$sd"); fi
     echo_quoted "${cmd[@]}" | tee -a "$seg_log"
@@ -923,7 +939,7 @@ then
   then
         # currently, the order of the T2 preprocessing only is registration to T1w
     cmd=($python "$hypvinndir/run_prediction.py" --sd "${sd}" --sid "${subject}"
-         "${hypvinn_flags[@]}" "${allow_root[@]}" --threads "$threads" --async_io
+         "${hypvinn_flags[@]}" "${allow_root[@]}" "${threads_seg[@]}" --async_io
          --batch_size "$batch_size" --seg_log "$seg_log" --device "$device"
          --viewagg_device "$viewagg" --t1)
     if [[ "$run_biasfield" == "1" ]]
@@ -956,7 +972,7 @@ then
   # use recon-surf to create surface models based on the FastSurferCNN segmentation.
   pushd "$reconsurfdir" > /dev/null || exit 1
   cmd=("./recon-surf.sh" --sid "$subject" --sd "$sd" --t1 "$conformed_name"
-       --asegdkt_segfile "$asegdkt_segfile" --threads "$threads" --py "$python"
+       --asegdkt_segfile "$asegdkt_segfile" "${threads_surf[@]}" --py "$python"
        "${surf_flags[@]}" "${allow_root[@]}")
   echo_quoted "${cmd[@]}" | tee -a "$seg_log"
   "${cmd[@]}"

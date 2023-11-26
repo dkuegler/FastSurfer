@@ -280,14 +280,30 @@ then
 fi
 
 # set threads for openMP and itk
+pre_OMP_NUM_THREADS=$OMP_NUM_THREADS
+pre_ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS
 # if OMP_NUM_THREADS is not set and available resources are too vast, mc will fail with segmentation fault!
 # Therefore we set it to 1 as default above, if nothing is specified.
 fsthreads=""
+pfsthreads=""
 export OMP_NUM_THREADS=$threads
 export ITK_GLOBAL_DEFAULT_NUMBER_OF_THREADS=$threads
-if [ "$threads" -gt "1" ]
+#mcthreads="4"
+if [[ -n "$threads" ]]
 then
-  fsthreads="-threads $threads -itkthreads $threads"
+  if [[ ! "$threads" =~ ^\d+$ ]] ; then echo "'$1' is not a valid argument to --threads." ; exit 1 ; fi
+  if [[ "$threads" -gt "1" ]]
+  then
+    fsthreads="-threads $threads -itkthreads $threads"
+    pthreads=$((($1 + 1) / 2))
+    pfsthreads="-threads $pthreads -itkthreads $pthreads"
+#    mcthreads=$((threads > 4 ? 4 : threads))
+  else
+    mcthreads="4"
+    pthreads=
+  fi
+else
+  mcthreads="4"
 fi
 
 if [ "$(echo -n "${SUBJECTS_DIR}/${subject}" | wc -m)" -gt 185 ]
@@ -371,9 +387,6 @@ echo "Log file for recon-surf.sh" >> "$LF"
 cmd="$python $FASTSURFER_HOME/FastSurferCNN/quick_qc.py --asegdkt_segfile $asegdkt_segfile"
 RunIt "$cmd" "$LF"
 echo "" | tee -a "$LF"
-
-
-
 
 ########################################## START ########################################################
 

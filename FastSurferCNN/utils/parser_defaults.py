@@ -330,10 +330,10 @@ ALL_FLAGS = {
     "threads": __arg(
         "--threads",
         dest="threads",
-        default=get_num_threads(),
+        default=-1,
         type=int,
-        help=f"Number of threads to use (defaults to number of hardware threads: "
-             f"{get_num_threads()})",
+        help=f"Number of threads to use (defaults to number of hardware threads/no "
+             f"constraint: -1 => {get_num_threads()} threads)",
     ),
     "async_io": __arg(
         "--async_io",

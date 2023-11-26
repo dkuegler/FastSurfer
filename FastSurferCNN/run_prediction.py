@@ -224,7 +224,8 @@ class RunModelOnData:
         """
         # TODO Fix docstring of RunModelOnData.__init__
         self._threads = threads
-        torch.set_num_threads(self._threads)
+        if self._threads > 0:
+            torch.set_num_threads(self._threads)
         self._async_io = async_io
 
         self.sf = 1.0
@@ -650,7 +651,7 @@ def main(
     # Download checkpoints if they do not exist
     # see utils/checkpoint.py for default paths
     LOGGER.info("Checking or downloading default checkpoints ...")
-    
+
     urls = load_checkpoint_config_defaults("url", filename=CHECKPOINT_PATHS_FILE)
 
     get_checkpoints(ckpt_ax, ckpt_cor, ckpt_sag, urls=urls)
