@@ -340,7 +340,7 @@ class FastSurferVINN(FastSurferCNNBase):
             Input image [N, C, H, W].
         scale_factor : Tensor
             Tensor of shape [N, 1] representing the scale factor for each image in the batch.
-        scale_factor_out : Tensor, Optional
+        scale_factor_out : Tensor, optional
             Tensor representing the scale factor for the output. Defaults to None.
 
         Returns
