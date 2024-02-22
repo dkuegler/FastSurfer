@@ -17,8 +17,13 @@
 
 
 # IMPORTS
-import optparse
+import argparse
+import os
 import sys
+from concurrent.futures import Executor, ThreadPoolExecutor, Future
+from pathlib import Path
+from typing import Callable, TypeVar, Optional, Sequence
+from logging import getLogger as _get_logger
 
 import numpy as np
 import nibabel.freesurfer.io as fs
@@ -27,8 +32,12 @@ from scipy import sparse
 from scipy.sparse.csgraph import connected_components
 from lapy import TriaMesh
 
-from smooth_aparc import smooth_aparc
+from smooth_aparc import smooth_aparc, _ReadSurfaceWithMetadata
 
+T_Label = TypeVar("T_Label", bound=np.integer)
+T_VertexId = TypeVar("T_VertexId", bound=np.integer)
+T_VertexCoord = TypeVar("T_VertexCoord", bound=np.floating)
+TV = TypeVar("TV", bound=np.number)
 
 HELPTEXT = """
 Script to sample labels from image to surface and clean up. 
@@ -63,54 +72,83 @@ h_seglut = "Look-up-table for values in segmentation image (rows need to corresp
 h_projmm = "Sample along normal at projmm distance (in mm), default 0"
 h_radius = "Search around sample location at radius (in mm) for label if 'unknown', default None"
 
+logger = _get_logger(__name__)
 
-def options_parse():
+
+def options_parse() -> argparse.Namespace:
     """
     Create a command line interface and return command line options.
 
     Returns
     -------
     options : argparse.Namespace
-        Namespace object holding options.
+        A Namespace object holding options.
     """
-    parser = optparse.OptionParser(
-        version="$Id: smooth_aparc,v 1.0 2018/06/24 11:34:08 mreuter Exp $",
+    parser = argparse.ArgumentParser(
         usage=HELPTEXT,
     )
-    parser.add_option("--inseg", dest="inseg", help=h_inseg)
-    parser.add_option("--insurf", dest="insurf", help=h_insurf)
-    parser.add_option("--incort", dest="incort", help=h_incort)
-    parser.add_option("--surflut", dest="surflut", help=h_surflut)
-    parser.add_option("--seglut", dest="seglut", help=h_seglut)
-    parser.add_option("--outaparc", dest="outaparc", help=h_outaparc)
-    parser.add_option("--projmm", dest="projmm", help=h_projmm, default=0.0, type="float")
-    parser.add_option("--radius", dest="radius", help=h_radius, default=None, type="float")
-    (options, args) = parser.parse_args()
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="$Id: smooth_aparc,v 1.0 2018/06/24 11:34:08 mreuter Exp $",
+    )
+    parser.add_argument("--inseg", dest="inseg", help=h_inseg)
+    parser.add_argument("--insurf", dest="insurf", help=h_insurf)
+    parser.add_argument("--incort", dest="incort", help=h_incort)
+    parser.add_argument("--surflut", dest="surflut", help=h_surflut)
+    parser.add_argument("--seglut", dest="seglut", help=h_seglut)
+    parser.add_argument("--outaparc", dest="outaparc", help=h_outaparc)
+    parser.add_argument(
+        "--projmm",
+        dest="projmm",
+        help=h_projmm,
+        default=0.0,
+        type=float,
+    )
+    parser.add_argument(
+        "--radius",
+        dest="radius",
+        help=h_radius,
+        default=None,
+        type=float,
+    )
+    args = parser.parse_args()
 
-    if options.insurf is None or options.inseg is None or options.outaparc is None:
+    if args.insurf is None or args.inseg is None or args.outaparc is None:
         sys.exit("ERROR: Please specify input surface, input image and output aparc!")
 
-    if options.surflut is None or options.seglut is None:
+    if args.surflut is None or args.seglut is None:
         sys.exit("ERROR: Please specify surface and segmentatin image LUT!")
 
     # maybe later add functionality, to not have a cortex label, e.g. 
     # like FreeSurfer find largest connected component and fill only
     # the other unknown regions
-    if options.incort is None:
+    if args.incort is None:
         sys.exit("ERROR: Please specify surface cortex label!")
 
-    return options
+    return args
 
-def construct_adj_cluster(tria, annot):
+
+def construct_adj_cluster(
+    tria: npt.NDArray[T_VertexId],
+    annot: npt.NDArray[T_Label],
+) -> sparse.csc_matrix:
     """
     Compute adjacency matrix of edges from same annotation label only.
 
     Operates only on triangles and removes edges that cross annotation
     label boundaries.
 
+    Parameters
+    ----------
+    tria : npt.NDArray[int]
+        Array of vertex edges.
+    annot : npt.NDArray[int]
+        Array of per vertex annotation labels.
+
     Returns
     -------
-    csc_matrix
+    sparse.csc_matrix
         The non-directed adjacency matrix
         will be symmetric. Each inner edge (i,j) will have
         the number of triangles that contain this edge.
@@ -133,53 +171,79 @@ def construct_adj_cluster(tria, annot):
     n = annot.shape[0]
     return sparse.csc_matrix((dat, (i, j)), shape=(n, n))
 
-def find_all_islands(surf, annot):
+
+def find_all_islands(
+    surf: tuple[npt.NDArray[T_VertexCoord], npt.NDArray[T_VertexId]],
+    annot: npt.NDArray[T_Label],
+) -> npt.NDArray[T_Label]:
     """
     Find vertices in disconnected islands for all labels in surface annotation.
 
     Parameters
     ----------
-    surf : tuple
+    surf : tuple[npt.NDArray[float], npt.NDArray[int]]
         Surface as returned by nibabel fs.read_geometry, where:
         surf[0] is the np.array of (n, 3) vertex coordinates and
         surf[1] is the np.array of (m, 3) triangle indices.
-    annot : np.ndarray
+    annot : npt.NDArray[int]
         Annotation as an int array of (n,) with label ids for each vertex.
         This is for example the first element of the tupel returned by
         nibabel fs.read_annot.
 
     Returns
     -------
-    vidx : np.ndarray (i,)
-        Arrray listing vertex indices of island vertices, empty if no islands
-        (components disconnetcted from largest label region) are found.
+    vidx : npt.NDArray[int] (i,)
+        Array listing vertex indices of island vertices, empty if no islands
+        (components disconnected from the largest label region) are found.
     """
-    # construct adjaceny matrix without edges across regions:
-    adjM = construct_adj_cluster(surf[1], annot)
-    # compute disconnected components
-    n_comp, labels = connected_components(csgraph=adjM, directed=False, return_labels=True)
-    # for each label, get islands that are not connected to main component
-    lids = np.unique(annot)
-    vidx = np.array([], dtype = np.int32)
-    for lid in lids:
-        ll = labels[annot==lid]
-        lidx = np.arange(labels.size)[annot==lid]
+    from concurrent.futures import ThreadPoolExecutor, Future
+
+    def get_island_indices_by_label(lid: int, labs: np.ndarray) -> np.ndarray:
+        mask = annot == lid
+        ll = labs[mask]
+        lidx = np.arange(labs.size)[mask]
         lmax = np.bincount(ll).argmax()
         v = lidx[(ll != lmax)]
         if v.size > 0:
-            print("Found disconnected islands ({} vertices total) for label {}!".format(v.size, lid))
-        vidx = np.concatenate((vidx,v))
-    return vidx
+            logger.warning(
+                f"Found disconnected islands ({v.size} vertices total) for label {lid}!"
+            )
+        return v
 
-def sample_nearest_nonzero(img, vox_coords, radius=3.0):
+    with ThreadPoolExecutor(len(os.sched_getaffinity(0))) as pool:
+        # explicitly define callable to fix typing warning
+        unique: Callable[[npt.NDArray[TV]], npt.NDArray[TV]] = np.unique
+        # compute disconnected components
+        lids: Future[npt.NDArray[T_Label]] = pool.submit(unique, annot)
+
+        # construct adjacency matrix without edges across regions:
+        adjacency_matrix = construct_adj_cluster(surf[1], annot)
+        # for each label, get islands that are not connected to main component
+        num_components, labels = connected_components(
+            csgraph=adjacency_matrix,
+            directed=False,
+            return_labels=True,
+        )
+        from functools import partial
+        func = partial(get_island_indices_by_label, labs=labels)
+        return np.concatenate(
+            list(pool.map(func, lids.result())),
+            dtype=np.int32)
+
+
+def sample_nearest_nonzero(
+    img: nib.analyze.SpatialImage,
+    vox_coords: npt.NDArray[float],
+    radius: float = 3.0,
+) -> npt.NDArray[int]:
     """
     Sample closest non-zero value in a ball of radius around vox_coords.
 
     Parameters
     ----------
-    img : nibabel.image
+    img : nibabel.analyze.SpatialImage
         Image to sample. Voxels need to be isotropic.
-    vox_coords : ndarray float shape(n,3)
+    vox_coords : npt.NDArray[float](n,3)
         Coordinates in voxel space around which to search.
     radius : float default 3.0
         Consider all voxels inside this radius to find a non-zero value.
@@ -187,19 +251,24 @@ def sample_nearest_nonzero(img, vox_coords, radius=3.0):
     Returns
     -------
     samples : np.ndarray(n,)
-        Sampled values, returns zero for vertices where values are zero in ball.
+        Sampled values (dtype of img), returns zero for vertices where values are zero
+        in ball.
     """
     # check for isotropic voxels 
     voxsize = img.header.get_zooms()
-    print("Check isotropic vox sizes: {}".format(voxsize))
-    assert (np.max(np.abs(voxsize - voxsize[0])) < 0.001), 'Voxels not isotropic!'
+    logger.info(f"Check isotropic vox sizes: {voxsize}")
+    if not np.allclose(voxsize, voxsize[0], atol=0.001, rtol=0.0):
+        raise AssertionError('Voxels not isotropic!')
     data = np.asarray(img.dataobj)
-    
+
     # radius in voxels:
     rvox = radius * voxsize[0]
-    
+
     # sample window around nearest voxel
-    x_nn = np.rint(vox_coords).astype(int)
+    if np.issubdtype(vox_coords.dtype, np.integer):
+        x_nn = vox_coords
+    else:
+        x_nn = np.rint(vox_coords).astype(dtype=int)
     # Reason: to always have the same number of voxels that we check
     # and to be consistent with FreeSurfer, we center the window at
     # the nearest neighbor voxel, instead of at the float vox coordinates
@@ -212,13 +281,13 @@ def sample_nearest_nonzero(img, vox_coords, radius=3.0):
     # modify distances slightly, to avoid randomness when
     # sorting with different radius values for voxels that otherwise
     # have the same distance to center
-    xvd = xv+0.001
-    yvd = yv+0.002
-    zvd = zv+0.003
-    ddm = np.sqrt(xvd*xvd + yvd*yvd + zvd*zvd).flatten()
+    xvd = xv + 0.001
+    yvd = yv + 0.002
+    zvd = zv + 0.003
+    ddm = np.sqrt(xvd * xvd + yvd * yvd + zvd * zvd).flatten()
     # also compute correct distance for ball mask below
-    dd = np.sqrt(xv*xv + yv*yv + zv*zv).flatten()
-    ddball = dd<=rvox
+    dd = np.sqrt(xv * xv + yv * yv + zv * zv).flatten()
+    ddball = dd <= rvox
 
     # flatten and keep only ball with radius
     xv = xv.flatten()[ddball]
@@ -233,41 +302,47 @@ def sample_nearest_nonzero(img, vox_coords, radius=3.0):
     # Note: we keep the first zero voxel so we can later
     # determine if all voxels are zero with the argmax trick
     sortidx = np.argsort(ddm)
-    offsets = offsets[sortidx,:]
+    offsets = offsets[sortidx, :]
 
     # reshape and tile to add to list of coords
-    n = x_nn.shape[0]
-    toffsets = np.tile(offsets.transpose().reshape(1,3,offsets.shape[0]),(n,1,1))
+    # move axes and broadcast (axis0 will broadcast to x_nn)
+    toffsets = offsets.transpose()[np.newaxis]
     s_coords = x_nn[:, :, np.newaxis] + toffsets
 
     # get image data at the s_coords locations
-    s_data = data[s_coords[:,0], s_coords[:,1], s_coords[:,2]]
+    s_data = data[s_coords[:, 0], s_coords[:, 1], s_coords[:, 2]]
 
     # get first non-zero if possible
-    nzidx = (s_data!=0).argmax(axis=1)
+    nzidx = np.not_equal(s_data, 0).argmax(axis=1)
     # the above return index zero if all elements are zero which is OK for us
     # as we can then sample there and get a value of zero
-    samples = s_data[np.arange(s_data.shape[0]),nzidx]
+    samples = s_data[np.arange(s_data.shape[0]), nzidx]
     return samples
 
 
-def sample_img(surf, img, cortex=None, projmm=0.0, radius=None):
+def sample_img(
+    surf: Path | str | tuple[npt.NDArray[T_VertexCoord], npt.NDArray[T_VertexId]],
+    img: Path | str | nib.MGHImage,
+    cortex: Optional[Path | str | npt.NDArray[T_Label]] = None,
+    projmm: float = 0.0,
+    radius: Optional[float] = None,
+) -> np.ndarray:
     """
     Sample volume at a distance from the surface.
 
     Parameters
     ----------
-    surf : tuple | str
+    surf : tuple[np.ndarray, np.ndarray], Path, str
         Surface as returned by nibabel fs.read_geometry, where:
-        surf[0] is the np.array of (n, 3) vertex coordinates and
-        surf[1] is the np.array of (m, 3) triangle indices.
+        surf[0] is the np.ndarray of (n, 3) vertex coordinates and
+        surf[1] is the np.ndarray of (m, 3) triangle indices.
         If type is str, read surface from file.
-    img : nibabel.image | str
+    img : nibabel.MGHImage, Path, str
         Image to sample.
         If type is str, read image from file.
-    cortex : np.ndarray | str
-        Filename of cortex label or np.array with cortex indices.
-    projmm : float
+    cortex : np.ndarray, Path, str
+        Filename of cortex label or np.ndarray with cortex indices.
+    projmm : float, default=0.0
         Sample projmm mm along the surface vertex normals (default=0).
     radius : float, optional 
         If given and if the sample is equal to zero, then consider
@@ -276,13 +351,16 @@ def sample_img(surf, img, cortex=None, projmm=0.0, radius=None):
     Returns
     -------
     samples : np.ndarray (n,)
-        Sampled values.
+        Sampled values from img (same dtype as img).
     """
-    if isinstance(surf, str):
+    if isinstance(surf, (str, Path)):
         surf = fs.read_geometry(surf, read_metadata=True)
-    if isinstance(img, str):
+    if isinstance(img, (str, Path)):
         img = nib.load(img)
-    if isinstance(cortex, str):
+    if not isinstance(img, nib.MGHImage):
+        # MGHImage is needed because get_vox2ras_tkr is only defined for MGHHeader
+        raise TypeError(f"img must be an MGHImage, but is {type(img).__name__}!")
+    if isinstance(cortex, (str, Path)):
         cortex = fs.read_label(cortex)
     nvert = surf[0].shape[0]
     # Compute Cortex Mask
@@ -294,40 +372,39 @@ def sample_img(surf, img, cortex=None, projmm=0.0, radius=None):
 
     data = np.asarray(img.dataobj)
     # Use LaPy TriaMesh for vertex normal computation
-    T = TriaMesh(surf[0], surf[1])
+    mesh = TriaMesh(surf[0], surf[1])
 
     # make sure the triangles are oriented (normals pointing to the same direction
-    if not T.is_oriented():
+    if not mesh.is_oriented():
         print("WARNING: Surface is not oriented, flipping corrupted normals.")
-        T.orient_()
-
+        mesh.orient_()
     # compute sample coordinates projmm mm along the surface normal
     # in surface RAS coordiante system:
-    x = T.v + projmm * T.vertex_normals()
+    x = mesh.v + projmm * mesh.vertex_normals()
     # mask cortex
     xx = x[mask]
 
     # compute Transformation from surface RAS to voxel space:
-    Torig = img.header.get_vox2ras_tkr()
-    Tinv = np.linalg.inv(Torig)
-    x_vox = np.dot(xx, Tinv[:3, :3].T) + Tinv[:3, 3]
+    vox2ras_orig = img.header.get_vox2ras_tkr()
+    ras2vox = np.linalg.inv(vox2ras_orig)
+    x_vox = np.dot(xx, ras2vox[:3, :3].T) + ras2vox[:3, 3]
     # sample at nearest voxel
     x_nn = np.rint(x_vox).astype(int)
-    samples_nn = data[x_nn[:,0], x_nn[:,1], x_nn[:,2]]
+    samples_nn = data[x_nn[:, 0], x_nn[:, 1], x_nn[:, 2]]
     # no search for zeros, done:
     if not radius:
         samplesfull = np.zeros(nvert, dtype="int")
         samplesfull[mask] = samples_nn
         return samplesfull
     # search for zeros, but no zeros exist, done:
-    zeros = np.asarray(samples_nn==0).nonzero()[0]
+    zeros = np.asarray(samples_nn == 0).nonzero()[0]
     if zeros.size == 0:
         samplesfull = np.zeros(nvert, dtype="int")
         samplesfull[mask] = samples_nn
         return samplesfull
     # here we need to do the hard work of searching in a windows
     # for non-zero samples
-    print("sample_img: found {} zero samples, searching radius ...".format(zeros.size))
+    logger.info(f"sample_img: found {zeros.size} zero samples, searching radius ...")
     z_nn = x_nn[zeros]
     z_samples = sample_nearest_nonzero(img, z_nn, radius=radius)
     samples_nn[zeros] = z_samples
@@ -336,19 +413,26 @@ def sample_img(surf, img, cortex=None, projmm=0.0, radius=None):
     return samplesfull
 
 
-def replace_labels(img_labels, img_lut, surf_lut):
+def replace_labels(
+    img_labels: npt.NDArray[T_Label],
+    img_lut: Path | str,
+    surf_lut: Path | str,
+    *,
+    executor: Optional[Executor] = None,
+) -> tuple[npt.NDArray[T_Label], npt.NDArray[int], npt.NDArray[str]]:
     """
     Replace image labels with corresponding surface labels or unknown.
 
     Parameters
     ----------
     img_labels : np.ndarray(n,)
-        Array with imgage label ids.
-    img_lut : str
+        Array with image label ids.
+    img_lut : str, Path
         Filename for image label look up table.
-    surf_lut : str
+    surf_lut : str, Path
         Filename for surface label look up table.
-
+    executor : concurrent.futures.Executor, optional
+        Executor object for parallel IO.
     Returns
     -------
     surf_labels : np.ndarray (n,)
@@ -358,76 +442,160 @@ def replace_labels(img_labels, img_lut, surf_lut):
     surf_names : np.ndarray[str] shape(m,)
         Names of label regions.
     """
-    surflut = np.loadtxt(surf_lut, usecols=(0,2,3,4,5), dtype="int")
-    surf_ids = surflut[:,0]
+    # Helper function for typing and parallel IO
+    def _load_lut(_f: Path | str) -> Future[npt.NDArray[int]]:
+        return np.loadtxt(_f, usecols=(0, 2, 3, 4, 5), dtype=int)
+
+    def _load_names(_f: Path | str) -> Future[npt.NDArray[str]]:
+        return np.loadtxt(_f, usecols=(1,), dtype=str)
+
+    if executor is None:
+        surflut = _load_lut(surf_lut)
+        surf_names = _load_names(surf_lut)
+        imglut = _load_lut(img_lut)
+        img_names = _load_names(img_lut)
+    else:
+        # same as clause above, but in different threads
+        # first: schedule tasks
+        _surflut = executor.submit(_load_lut, surf_lut)
+        _surf_names = executor.submit(_load_names, surf_lut)
+        _imglut = executor.submit(_load_lut, img_lut)
+        _img_names = executor.submit(_load_names, img_lut)
+        # then: wait for and assign the results
+        surflut = _surflut.result()
+        surf_names = _surf_names.result()
+        imglut = _imglut.result()
+        img_names = _img_names.result()
+
+    surf_ids = surflut[:, 0]
+    surf_ctab = surflut[:, 1:5]
     surf_ctab =  surflut[:,1:5]
-    surf_names = np.loadtxt(surf_lut, usecols=(1), dtype="str")
-    imglut = np.loadtxt(img_lut, usecols=(0,2,3,4,5), dtype="int")
     img_ids = imglut[:,0]
-    img_names = np.loadtxt(img_lut, usecols=(1), dtype="str")
+    img_ids = imglut[:, 0]
     assert (np.all(img_names == surf_names)), "Label names in the LUTs do not agree!"
-    lut = np.zeros((img_labels.max()+1,), dtype = img_labels.dtype)
+    lut = np.zeros((img_labels.max() + 1,), dtype=img_labels.dtype)
     lut[img_ids] = surf_ids
     surf_labels = lut[img_labels]
     return surf_labels, surf_ctab, surf_names
 
 
-def sample_parc (surf, seg, imglut, surflut, outaparc, cortex=None, projmm=0.0, radius=None):
+def sample_parc(
+    surf: tuple[npt.NDArray[T_VertexCoord], npt.NDArray[T_VertexId]] | Path | str,
+    seg: nib.analyze.SpatialImage | Path | str,
+    imglut: Path | str,
+    surflut: Path | str,
+    outaparc: Path | str,
+    cortex: Optional[np.ndarray | str | Path] = None,
+    projmm: float = 0.0,
+    radius: Optional[float] = None,
+) -> int | str:
     """
     Sample cortical GM labels from image to surface and smooth.
 
     Parameters
     ----------
-    surf : tuple | str
+    surf : tuple, str, Path
         Surface as returned by nibabel fs.read_geometry, where:
         surf[0] is the np.array of (n, 3) vertex coordinates and
         surf[1] is the np.array of (m, 3) triangle indices.
         If type is str, read surface from file.
-    seg : nibabel.image | str
+    seg : nibabel.image, str, Path
         Image to sample.
         If type is str, read image from file.
-    imglut : str
+    imglut : str, Path
         Filename for image label look up table.
-    surflut : str
+    surflut : str, Path
         Filename for surface label look up table.
-    outaparc : str
+    outaparc : str, Path
         Filename for output surface parcellation.
-    cortex : np.ndarray | str
+    cortex : np.ndarray, str, Path, optional
         Filename of cortex label or np.ndarray with cortex indices.
-    projmm : float
+    projmm : float, default=0.0
         Sample projmm mm along the surface vertex normals (default=0).
     radius : float, optional
         If given and if the sample is equal to zero, then consider
         all voxels inside this radius to find a non-zero value.
+
+    Returns
+    -------
+    int, str
+        Zero, if successful, or an error message
     """
-    if isinstance(cortex, str):
-        cortex = fs.read_label(cortex)
-    if isinstance(surf, str):
-        surf = fs.read_geometry(surf, read_metadata=True)
-    if isinstance(seg, str):
-        seg = nib.load(seg)
-    # get rid of unknown labels first and translate the rest (avoids too much filling
-    # later as sampling will search around sample point if label is zero)
-    segdata, surfctab, surfnames = replace_labels(np.asarray(seg.dataobj), imglut, surflut)
-    # create img with new data (needed by sample img)
-    seg2 = nib.MGHImage(segdata, seg.affine, seg.header)
-    # sample from image to surface (and search if zero label)
-    surfsamples = sample_img(surf, seg2, cortex, projmm, radius)
-    # find label islands
-    vidx = find_all_islands(surf, surfsamples)
-    # set islands to zero (to ensure they get smoothed away later)
-    surfsamples[vidx] = 0
-    # smooth boundaries and remove islands inside cortex region
-    smooths = smooth_aparc(surf, surfsamples, cortex)
-    # write annotation
-    fs.write_annot(outaparc, smooths, ctab=surfctab, names=surfnames)
+    # define aliases for common/more descriptive typing
+    _AnnotType = tuple[np.ndarray, np.ndarray, list[str]]
+    read_surf: _ReadSurfaceWithMetadata = fs.read_geometry
+    read_cortex: Callable[[Path | str], np.ndarray] = fs.read_label
+    with ThreadPoolExecutor(8) as pool:
+        # read input files (this only submits these operations to be done in indendent
+        # threads so IO can be parallel
+        if isinstance(surf, (str, Path)):
+            _surf: Future = pool.submit(read_surf, surf, read_metadata=True)
+        if isinstance(cortex, (str, Path)):
+            _cortex: Future[np.ndarray] = pool.submit(read_cortex, cortex)
+        if isinstance(seg, (str, Path)):
+            seg = nib.load(seg)
+            seg_data = np.asarray(seg.dataobj)
+
+        # get rid of unknown labels first and translate the rest (avoids too much
+        # filling later as sampling will search around sample point if label is zero)
+        surf_segdata, surf_ctab, surf_names = replace_labels(
+            seg_data,
+            imglut,
+            surflut,
+            executor=pool,
+        )
+
+        if isinstance(surf, (str, Path)):
+            logger.info(f"Reading in surface: {surf} ...")
+            if _surf.exception() is None:
+                surf = _surf.result()
+            else:
+                logger.exception(_surf.exception())
+                return "Failed reading the input surface file."
+        if isinstance(cortex, (str, Path)):
+            logger.info(f"Reading in cortex label: {cortex} ...")
+            if _cortex.exception() is None:
+                cortex = _cortex.result()
+            else:
+                logger.exception(_cortex.exception())
+                return "Failed reading the cortex label file."
+
+    try:
+        # create img with new data (needed by sample img)
+        seg2 = nib.MGHImage(surf_segdata, seg.affine, seg.header)
+        # sample from image to surface (and search if zero label)
+        surfsamples = sample_img(surf, seg2, cortex, projmm, radius)
+        # find label islands
+        vidx = find_all_islands(surf, surfsamples)
+        # set islands to zero (to ensure they get smoothed away later)
+        surfsamples[vidx] = 0
+        # smooth boundaries and remove islands inside cortex region
+        smooths = smooth_aparc(surf, surfsamples, cortex)
+        # write annotation
+        fs.write_annot(outaparc, smooths, ctab=surf_ctab, names=surf_names)
+    except Exception as e:
+        logger.exception(e)
+        return e.args[0]
+    return 0
 
 
 if __name__ == "__main__":
+    from logging import INFO, basicConfig
+    basicConfig(
+        level=INFO,
+        format="%(filename)s[%(lineno)d] %(levelname)s: %(message)s",
+    )
+
     # Command Line options are error checking done here
     options = options_parse()
 
-    sample_parc(options.insurf, options.inseg, options.seglut, options.surflut, options.outaparc, options.incort, options.projmm, options.radius)
-
-    sys.exit(0)
-
+    sys.exit(sample_parc(
+        options.insurf,
+        options.inseg,
+        options.seglut,
+        options.surflut,
+        options.outaparc,
+        options.incort,
+        options.projmm,
+        options.radius,
+    ))

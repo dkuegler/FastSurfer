@@ -18,7 +18,12 @@
 
 # IMPORTS
 import optparse
+import os
 import sys
+from pathlib import Path
+from typing import Callable, Literal, Optional, Protocol, TypeVar
+from logging import getLogger
+
 import numpy as np
 import nibabel.freesurfer.io as fs
 from numpy import typing as npt
@@ -51,6 +56,21 @@ h_inaparc = "path to input aparc"
 h_incort = "path to input cortex label"
 h_insurf = "path to input surface"
 h_outaparc = "path to output aparc"
+
+logger = getLogger(__name__)
+
+T_Label = TypeVar("T_Label", bound=np.integer)
+T_VertexFaces = TypeVar("T_VertexFaces", bound=np.integer)
+T_VertexCoord = TypeVar("T_VertexCoord", bound=np.floating)
+_SurfWithMetaData = tuple[
+    npt.NDArray[T_VertexCoord],
+    npt.NDArray[T_VertexFaces],
+    dict[str, np.ndarray],
+]
+
+
+class _ReadSurfaceWithMetadata(Protocol):
+    def __call__(self, __f: Path | str, read_metadata: True) -> _SurfWithMetaData: ...
 
 
 def options_parse():
@@ -129,10 +149,10 @@ def bincount2D_vectorized(a: npt.NDArray) -> np.ndarray:
 
 def mode_filter(
         adjM: sparse.csr_matrix,
-        labels: npt.NDArray[str],
-        fillonlylabel = None,
-        novote: npt.ArrayLike = []
-) -> npt.NDArray[int]:
+        labels: npt.NDArray[T_Label],
+        fillonlylabel: Optional[T_Label] = None,
+        novote: npt.ArrayLike = ()
+) -> npt.NDArray[T_Label]:
     """
     Apply mode filter (smoothing) to integer labels on mesh vertices.
 
@@ -145,10 +165,10 @@ def mode_filter(
         in its own vote.
     labels : npt.NDArray[int]
         List of integer labels at each vertex of the mesh.
-    fillonlylabel : int
-        Label to fill exclusively. Defaults to None to smooth all labels.
-    novote : npt.ArrayLike
-        Label ids that should not vote. Defaults to [].
+    fillonlylabel : int, optional
+        Label to fill exclusively. None (default): smooth all labels.
+    novote : npt.ArrayLike, default=()
+        Label ids that should not vote.
 
     Returns
     -------
@@ -156,13 +176,11 @@ def mode_filter(
         New smoothed labels.
     """
     # make sure labels lengths equals adjM dimension
-    n = labels.shape[0]
-    if n != adjM.shape[0] or n != adjM.shape[1]:
-        sys.exit(
-            "ERROR mode_filter: adjM size "
-            + format(adjM.shape)
-            + " does not match label length "
-            + format(labels.shape)
+    num_labels = labels.shape[0]
+    if num_labels != adjM.shape[0] or num_labels != adjM.shape[1]:
+        raise RuntimeError(
+            f"mode_filter: adjM size {adjM.shape} does not match label length "
+            f"{labels.shape}."
         )
     # remove rows with only a single entry from adjM
     # if we removed some triangles, we may have isolated vertices
@@ -181,15 +199,13 @@ def mode_filter(
     # find vertices to fill
     # if fillonlylabels empty, fill all
     if not fillonlylabel:
-        ids = np.arange(0, n)
+        ids = np.arange(0, num_labels)
     else:
         # select the ones with the labels
         ids = np.where(labels == fillonlylabel)[0]
         if ids.size == 0:
-            print(
-                "WARNING: No ids found with idx "
-                + str(fillonlylabel)
-                + "  ... continue"
+            logger.warning(
+                f"WARNING: No ids found with idx {fillonlylabel}  ... continue"
             )
             return labels
     # of all ids to fill, find neighbors
@@ -200,7 +216,7 @@ def mode_filter(
     # this could produce problems in the loop below, so lets stop for now:
     nlabels = labels[JJ]
     if any(nlabels == -1) or any(nlabels == 0):
-        sys.exit("there are -1 or 0 labels in neighbors!")
+        raise RuntimeError("there are -1 or 0 labels in neighbors!")
     # create sparse matrix with labels at neighbors
     nlabels = sparse.csr_matrix((labels[JJ], (II, JJ)))
     # print("nlabels: {}".format(nlabels))
@@ -218,7 +234,7 @@ def mode_filter(
     # then keep rows where max*counts differs from sums
     rmax = np.multiply(rmax, counts)
     rows = np.where(rmax != sums)[0]
-    print("rows: " + str(nlabels.shape[0]) + "  reduced to " + str(rows.size))
+    logger.info(f"rows: {nlabels.shape[0]}  reduced to {rows.size}")
     # Only after fixing the rows above, we can
     # get rid of entries that should not vote
     # since we have only rows that were non-uniform, they should not become empty
@@ -243,6 +259,45 @@ def mode_filter(
     if rempty > 0:
         # should not happen
         print("WARNING: row empty: " + str(rempty))
+
+    # idptr = nlabels.indptr
+    # _indices = (idptr[rows], idptr[rows + 1])
+    # _counts = _indices[1] - _indices[0]
+    #
+    # #
+    # max_group_size = 8
+    # row_val_by_size = [
+    #     [(r, nlabels.data[i0:i1])
+    #         for r, i0, i1, c in zip(rows, *_indices, _counts) if j == c]
+    #     for j in range(max_group_size)
+    # ]
+    # row_val_max_size = [
+    #     (r, nlabels.data[i0:i1])
+    #     for r, i0, i1, c in zip(rows, *_indices, _counts) if c >= max_group_size
+    # ]
+    #
+    # rempty = len(row_val_by_size[0])
+    # if rempty > 0:
+    #     # sanity-check all rows exist / should not happen
+    #     logger.warning(f"row empty: {rempty}")
+    #
+    # # if rows of group size 1 exist, the mode filter always returns the 1st value
+    # if len(row_val_by_size[1]) > 0:
+    #     rows, rvals = map(np.asarray, zip(*row_val_by_size[1]))
+    #     labels_new[ids[rows]] = rvals[:, 0]
+    #
+    # for r_v in row_val_by_size[2:]:
+    #     if len(r_v) > 0:
+    #         _rows, rvals = map(np.asarray, zip(*r_v))
+    #         mvals = mode(rvals, keepdims=True, axis=1)[0]
+    #         if mvals.size != 0:
+    #             labels_new[ids[_rows]] = mvals[:, 0]
+    #
+    # for row, mvals in map(lambda r: (r[0], mode(r[1], keepdims=True)[0]),
+    #                       row_val_max_size):
+    #     if mvals.size != 0:
+    #         labels_new[ids[row]] = mvals[0]
+
     # nbrs=np.squeeze(np.asarray(nbrs.todense())) # sparse matrix to dense matrix to np.array
     # nlabels=labels[nbrs]
     # counts = np.bincount(nlabels)
@@ -250,7 +305,11 @@ def mode_filter(
     return labels_new
 
 
-def smooth_aparc(surf, labels, cortex = None):
+def smooth_aparc(
+    surf: tuple[npt.NDArray[T_VertexCoord], npt.NDArray[T_VertexFaces]],
+    labels: npt.NDArray[T_Label],
+    cortex: Optional[npt.NDArray[T_VertexFaces]] = None,
+):
     """
     Smooth aparc label regions on the surface and fill holes.
 
@@ -276,11 +335,9 @@ def smooth_aparc(surf, labels, cortex = None):
     faces = surf[1]
     nvert = labels.size
     if labels.size != surf[0].shape[0]:
-        sys.exit(
-            "ERROR smooth_aparc: vertec count "
-            + format(surf[0].shape[0])
-            + " does not match label length "
-            + format(labels.size)
+        raise RuntimeError(
+            f"ERROR smooth_aparc: vertec count {surf[0].shape[0]} does not match "
+            f"label length {labels.size}."
         )
 
     # Compute Cortex Mask
@@ -296,13 +353,15 @@ def smooth_aparc(surf, labels, cortex = None):
     )  # num of places where non cortex has some real labels
     # here we need to decide how to deal with them
     # either we set everything outside cortex to -1 (the FS way)
-    # or we keep these real labels and allow them to vote, maybe even shrink cortex label? Probably not.
+    # or we keep these real labels and allow them to vote, maybe even shrink cortex
+    # label? Probably not.
 
     # get non-cortex ids (here we could subtract the ids that have a real label)
     # for now we remove everything outside cortex
     noncortids = np.where(~mask)
 
-    # remove triangles where one vertex is non-cortex to avoid these edges to vote on neighbors later
+    # remove triangles where one vertex is non-cortex to avoid these edges to vote on
+    # neighbors later
     rr = np.isin(faces, noncortids)
     rr = np.reshape(rr, faces.shape)
     rr = np.amax(rr, 1)
@@ -336,9 +395,11 @@ def smooth_aparc(surf, labels, cortex = None):
         labels = labels_new
         ids = np.where(labels == fillonlylabel)[0]
         if ids.size == idssize:
-            # no more improvement, strange could be an island in the cortex label that cannot be filled
+            # no more improvement, strange could be an island in the cortex label that
+            # cannot be filled
             print(
-                "Warning: Cannot improve but still have holes. Maybe there is an island in the cortex label that cannot be filled with real labels."
+                "Warning: Cannot improve but still have holes. Maybe there is an "
+                "island in the cortex label that cannot be filled with real labels."
             )
             fillids = np.where(labels == fillonlylabel)[0]
             labels[fillids] = 0
@@ -365,43 +426,80 @@ def smooth_aparc(surf, labels, cortex = None):
 
 
 def main(
-        insurfname: str,
-        inaparcname: str,
-        incortexname: str,
-        outaparcname: str
-) -> None:
+    insurfname: str | Path,
+    inaparcname: str | Path,
+    incortexname: str | Path,
+    outaparcname: str | Path,
+) -> Literal[0] | str:
     """
     Read files, smooth the aparc labels on the surface and save the smoothed labels.
 
     Parameters
     ----------
-    insurfname : str
+    insurfname : str, Path
         Suface filepath and name of source.
-    inaparcname : str
+    inaparcname : str, Path
         Annotation filepath and name of source.
-    incortexname : str
+    incortexname : str, Path
         Label filepath and name of source.
-    outaparcname : str
+    outaparcname : str, Path
         Surface filepath and name of destination.
+
+    Returns
+    -------
+    int, str
+        Zero, if successfull, an error message otherwise
     """
-    # read input files
-    print("Reading in surface: {} ...".format(insurfname))
-    surf = fs.read_geometry(insurfname, read_metadata=True)
-    print("Reading in annotation: {} ...".format(inaparcname))
-    aparc = fs.read_annot(inaparcname)
-    print("Reading in cortex label: {} ...".format(incortexname))
-    cortex = fs.read_label(incortexname)
+    from concurrent.futures import ThreadPoolExecutor, Future
+    # define aliases for common/more descriptive typing
+    _AnnotType = tuple[np.ndarray, np.ndarray, list[str]]
+    read_surf: _ReadSurfaceWithMetadata = fs.read_geometry
+    read_annot: Callable[[Path | str], _AnnotType] = fs.read_annot
+    read_cortex: Callable[[Path | str], np.ndarray] = fs.read_label
+    with ThreadPoolExecutor(3) as pool:
+        # read input files (this only submits these operations to be done in indendent
+        # threads so IO can be parallel
+        _surf: Future = pool.submit(read_surf, insurfname, read_metadata=True)
+        _aparc: Future[_AnnotType] = pool.submit(read_annot, inaparcname)
+        _cortex: Future[np.ndarray] = pool.submit(read_cortex, incortexname)
+
+    logger.info(f"Reading in surface: {insurfname} ...")
+    if _surf.exception() is None:
+        surf = _surf.result()
+    else:
+        logger.exception(_surf.exception())
+        return "Failed reading the input surface file."
+    logger.info(f"Reading in annotation: {inaparcname} ...")
+    if _aparc.exception() is None:
+        aparc = _aparc.result()
+    else:
+        logger.exception(_aparc.exception())
+        return "Failed reading the aparc annotation file."
+    logger.info(f"Reading in cortex label: {incortexname} ...")
+    if _cortex.exception() is None:
+        cortex = _cortex.result()
+    else:
+        logger.exception(_cortex.exception())
+        return "Failed reading the cortex label file."
     # set labels (n) and triangles (n x 3)
     labels = aparc[0]
-    slabels = smooth_aparc(surf, labels, cortex)
-    print("Outputting fixed annot: {}".format(outaparcname))
-    fs.write_annot(outaparcname, slabels, aparc[1], aparc[2])
+    try:
+        slabels = smooth_aparc(surf, labels, cortex)
+        logger.info(f"Outputting fixed annot: {outaparcname}")
+        fs.write_annot(outaparcname, slabels, aparc[1], aparc[2])
+    except Exception as e:
+        logger.exception(e)
+        return "Failed smoothing!"
+    return 0
 
 
 if __name__ == "__main__":
+    from logging import INFO, basicConfig
+    basicConfig(
+        level=INFO,
+        format="%(filename)s[%(lineno)d] %(levelname)s: %(message)s",
+    )
     # Command Line options are error checking done here
     options = options_parse()
 
-    main(options.insurf, options.inaparc, options.incort, options.outaparc)
-
-    sys.exit(0)
+    sys.exit(main(options.insurf, options.inaparc, options.incort, options.outaparc))

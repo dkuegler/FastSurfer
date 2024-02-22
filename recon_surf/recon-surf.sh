@@ -352,7 +352,6 @@ echo "Log file for recon-surf.sh" >> "$LF"
   echo "==================== Checking validity of inputs ================================="
   echo " "
 
-# Print parallelization parameters
   # Print parallelization parameters
   if [ "$DoParallel" == "1" ]
   then
@@ -591,6 +590,8 @@ for hemi in lh rh; do
     cmd="mri_mc $mdir/filled-pretess$hemivalue.mgz $hemivalue $outmesh"
     RunIt "$cmd" "$LF" "$CMDF"
 
+    ### If this is re-enabled, make sure there is an environment variable set for
+    ### USERNAME, otherwise this command will crash in docker containers
     # Rewrite surface orig.nofix to fix vertex locs bug (scannerRAS instead of surfaceRAS set with mc)
     #cmd="$python ${binpath}rewrite_mc_surface.py --input $outmesh --output $outmesh --filename_pretess $mdir/filled-pretess$hemivalue.mgz"
     #RunIt "$cmd" "$LF" "$CMDF"
@@ -644,8 +645,7 @@ for hemi in lh rh; do
     # equivalent to -qsphere
     # (23sec)
     cmd="$python ${binpath}spherically_project_wrapper.py --hemi $hemi --sdir $sdir"
-    printf -v tmp %q "$python"
-    cmd="$cmd --subject $subject --threads=$threads --py ${tmp} --binpath ${binpath}"
+    cmd="$cmd --subject $subject --threads=$threads"
     RunIt "$cmd" "$LF" "$CMDF"
   fi
 

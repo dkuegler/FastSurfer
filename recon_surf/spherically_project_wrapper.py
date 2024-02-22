@@ -14,10 +14,9 @@
 
 
 # IMPORTS
-import shlex
 import argparse
-from typing import Any
-from subprocess import Popen, PIPE
+from pathlib import Path
+from typing import Any, Sequence
 
 
 def setup_options():
@@ -33,123 +32,49 @@ def setup_options():
     parser = argparse.ArgumentParser(description="Wrapper for spherical projection")
 
     parser.add_argument("--hemi", type=str, help="Hemisphere to analyze.")
-    parser.add_argument("--sdir", type=str, help="Surface directory of subject.")
+    parser.add_argument("--sdir", type=Path, help="Surface directory of subject.")
     parser.add_argument("--subject", type=str, help="Name (ID) of subject.")
     parser.add_argument("--threads", type=int, help="Number of threads to use.")
-    parser.add_argument("--py", type=str, help="which python version to use.")
-    parser.add_argument(
-        "--binpath", type=str, help="directory of spherically_project.py script."
-    )
 
     args = parser.parse_args()
     return args
 
 
-def call(command: str, **kwargs: Any) -> int:
-    """
-    Run command with arguments.
-
-    Wait for command to complete. Sends output to logging module.
-
-    Parameters
-    ----------
-    command : str
-        Command to call.
-    **kwargs : Any
-        Keyword arguments.
-        
-
-    Returns
-    -------
-    int
-       Returncode of called command.
-    """
-    kwargs["stdout"] = PIPE
-    kwargs["stderr"] = PIPE
-    command_split = shlex.split(command)
-
-    p = Popen(command_split, **kwargs)
-    stdout, stderr = p.communicate()
-
-    if stdout:
-        for line in stdout.decode("utf-8").split("\n"):
-            print(line)
-    if stderr:
-        print("stderr")
-        for line in stderr.decode("utf-8").split("\n"):
-            print(line)
-
-    return p.returncode
-
-
-def spherical_wrapper(command1: str, command2: str, **kwargs: Any) -> int:
-    """
-    Run the first command. If it fails the fallback command is run instead.
-
-    Parameters
-    ----------
-    command1 : str
-        Command to call.
-    command2 : str
-        Fallback command to call.
-    **kwargs : Any
-        Arguments. The same as for the Popen constructor.
-
-    Returns
-    -------
-    code_1
-        Return code of command1. If command1 failed return code of command2.
-    """
-    # First try to run standard spherical project
-    print("Running command: {}".format(command1))
-    code_1 = call(command1, **kwargs)
-
-    if code_1 != 0:
-        print(
-            "Command {} failed.\nRunning fallback command: {}".format(
-                command1, command2
-            )
-        )
-        code_1 = call(command2, **kwargs)
-
-    return code_1
-
-
 if __name__ == "__main__":
-
+    import sys
     opts = setup_options()
-    cmd1 = (
-        opts.py
-        + " "
-        + opts.binpath
-        + "spherically_project.py -i "
-        + opts.sdir
-        + "/"
-        + opts.hemi
-        + ".smoothwm.nofix -o "
-        + opts.sdir
-        + "/"
-        + opts.hemi
-        + ".qsphere.nofix"
-    )
 
-    if opts.threads > 1:
-        threading = (
-            "-threads " + str(opts.threads) + " -itkthreads " + str(opts.threads)
+    try:
+        from spherically_project import spherically_project_surface
+
+        # # make sure the process has a username, so nibabel does not crash in
+        # write_geometry
+        # from os import environ
+        # env = dict(environ)
+        # env.setdefault("USERNAME", "UNKNOWN")
+        # spherical_wrapper(cmd1, cmd2, env=env)
+        spherically_project_surface(
+            opts.sdir / f"{opts.hemi}.smoothwm.nofix",
+            opts.sdir / f"{opts.hemi}.qsphere.nofix",
+            use_cholmod=False,
         )
-    else:
-        threading = ""
+    except Exception as e:
+        from traceback import print_exception
+        import shutil
 
-    cmd2 = (
-        "recon-all -s "
-        + opts.subject
-        + " -hemi "
-        + opts.hemi
-        + " -qsphere -no-isrunning "
-        + threading
-    )
-    # make sure the process has a username, so nibabel does not crash in write_geometry
-    from os import environ
-    env = dict(environ)
-    env.setdefault("USERNAME", "UNKNOWN")
-    spherical_wrapper(cmd1, cmd2, env=env)
+        print_exception(e)
+        print("python spherical_project failed.\nRunning FreeSurfer fallback command")
+
+        from FastSurferCNN.utils.run_tools import Popen
+
+        # run the FreeSurfer fallback command
+        recon_all = shutil.which("recon-all")
+        static_args = ("-qsphere", "-no-isrunning")
+        cmd = (recon_all, "-s", opts.subject, " -hemi ", opts.hemi) + static_args
+        if opts.threads > 1:
+            cmd += ("-threads", str(opts.threads), "-itkthreads", str(opts.threads))
+        done = Popen(cmd).forward_output(encoding="utf-8", timeout=None)
+        sys.exit(done.retcode)
+
+    # if we get here, we are successful. Return exit code 0.
+    sys.exit(0)

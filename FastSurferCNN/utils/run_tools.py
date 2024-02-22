@@ -14,13 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from concurrent.futures import Executor, Future
+import io
 import subprocess
+import sys
 from concurrent.futures import Executor, Future
+from datetime import datetime
 from dataclasses import dataclass
 from functools import partialmethod
 from typing import Generator, Optional, Sequence, Callable, Any, Collection, Iterable
-from datetime import datetime
+from typing import IO, Generator, Optional, Sequence, AnyStr
+
 
 # TODO: python3.9+
 # from collections.abc import Generator
@@ -78,28 +81,41 @@ class Popen(subprocess.Popen):
         super().__init__(*args, **kwargs)
 
     def messages(self, timeout: float) -> Generator[MessageBuffer, None, None]:
+        """
+
+        Parameters
+        ----------
+        timeout : float
+            Time in seconds to wait, before checking if the process is still alive.
+
+        Yields
+        -------
+        MessageBuffer
+            A MessageBuffer object with stdout and stderr information.
+        """
         from subprocess import TimeoutExpired
 
+        yielded_returncode = None
         start = self._starttime or datetime.now()
         while self.poll() is None:
             try:
                 stdout, stderr = self.communicate(timeout=timeout)
+                yielded_returncode = self.returncode
                 yield MessageBuffer(
                     out=stdout if stdout else b"",
                     err=stderr if stderr else b"",
-                    retcode=self.returncode,
+                    retcode=yielded_returncode,
                     runtime=(datetime.now() - start).total_seconds(),
                 )
             except TimeoutExpired:
                 pass
 
-        _stdout = (
-            b"" if self.stdout is None or self.stdout.closed else self.stdout.read()
-        )
-        _stderr = (
-            b"" if self.stderr is None or self.stderr.closed else self.stderr.read()
-        )
-        if _stderr != b"" or _stdout != b"":
+        def data_to_read(file: Optional[IO[AnyStr]]) -> bool:
+            return file is not None and not file.closed
+
+        _stdout = self.stdout.read() if data_to_read(self.stdout) else b""
+        _stderr = self.stderr.read() if data_to_read(self.stderr) else b""
+        if _stderr != b"" or _stdout != b"" or yielded_returncode is None:
             yield MessageBuffer(
                 out=_stdout,
                 err=_stderr,
@@ -176,7 +192,7 @@ class Popen(subprocess.Popen):
             msg.retcode = self.returncode
         return msg
 
-    def as_future(self, pool: Executor, timeout: float = None) -> Future:
+    def as_future(self, pool: Executor, timeout: Optional[float] = None) -> Future:
         """
         Similar to `finish` in its application, but as non-blocking Future.
 
@@ -184,6 +200,8 @@ class Popen(subprocess.Popen):
         ----------
         pool : Executor
             A concurrent.futures.Executor, usually a ThreadPoolExecutor.
+        timeout : float, optional
+            Time in seconds to wait, before returning to host process (None: unlimited).
 
         Returns
         -------
@@ -199,6 +217,48 @@ class Popen(subprocess.Popen):
 
     async def async_finish(self, timeout: float = None) -> MessageBuffer:
         return self.finish(timeout)
+
+    def forward_output(
+        self,
+        file: Optional[io.TextIOBase] = None,
+        encoding: Optional[str] = None,
+        timeout: Optional[float] = None,
+        out_prefix: str = "",
+        err_prefix: str = "!",
+    ) -> MessageBuffer:
+        """
+        Forwards the stdout and stderr every timeout to file. Returns the full output
+        as a MessageBuffer object.
+
+        Parameters
+        ----------
+        file: IO.TextIO, optional
+
+        encoding: str, optional
+            Charset to encode.
+        timeout: float, optional
+            Interval to let the child process, before returning to the parent (this)
+            process.
+        out_prefix: str, default=""
+            String to prefix lines from the stdout output.
+        err_prefix: str, default="!"
+            String to prefix lines from the stderr output.
+
+        Returns
+        -------
+        MessageBuffer
+            Full stdout, stderr and returncode.
+        """
+        done = MessageBuffer()
+        for outputs in self.messages(timeout=timeout):
+            outputs.forward_output(
+                file=file,
+                encoding=encoding,
+                out_prefix=out_prefix,
+                err_prefix=err_prefix,
+            )
+            done += outputs
+        return done
 
 
 class PyPopen(Popen):
