@@ -28,6 +28,7 @@ import numpy as np
 import nibabel.freesurfer.io as fs
 from numpy import typing as npt
 from scipy import sparse
+from scipy.stats import mode
 
 
 HELPTEXT = """
@@ -147,6 +148,16 @@ def bincount2D_vectorized(a: npt.NDArray) -> np.ndarray:
     return np.bincount(a_offs.ravel(), minlength=a.shape[0] * N).reshape(-1, N)
 
 
+# def _mode(r_v):
+#     _rows, rvals = zip(*r_v)
+#     _data = np.stack(list(rvals), axis=0)
+#     return np.asarray(_rows), mode(_data, keepdims=True, axis=1)[0]
+#
+# def _mode_max(r_v):
+#     row_mvals = ((row, mode(rvals, keepdims=True)[0]) for row, rvals in r_v)
+#     return [(row, mvals[0]) for row, mvals in row_mvals if mvals.size != 0]
+#
+
 def mode_filter(
         adjM: sparse.csr_matrix,
         labels: npt.NDArray[T_Label],
@@ -220,7 +231,6 @@ def mode_filter(
     # create sparse matrix with labels at neighbors
     nlabels = sparse.csr_matrix((labels[JJ], (II, JJ)))
     # print("nlabels: {}".format(nlabels))
-    from scipy.stats import mode
 
     if not isinstance(nlabels, sparse.csr_matrix):
         raise ValueError("Matrix must be CSR format.")
@@ -256,47 +266,52 @@ def mode_filter(
         if mvals.size != 0:
             # print(str(row)+' '+str(ids[row])+' '+str(mvals[0]))
             labels_new[ids[row]] = mvals[0]
-    if rempty > 0:
-        # should not happen
-        print("WARNING: row empty: " + str(rempty))
 
+    # if rempty > 0:
+    #     # should not happen
+    #     print("WARNING: row empty: " + str(rempty))
+    #
     # idptr = nlabels.indptr
     # _indices = (idptr[rows], idptr[rows + 1])
     # _counts = _indices[1] - _indices[0]
     #
     # #
-    # max_group_size = 8
-    # row_val_by_size = [
-    #     [(r, nlabels.data[i0:i1])
-    #         for r, i0, i1, c in zip(rows, *_indices, _counts) if j == c]
-    #     for j in range(max_group_size)
-    # ]
-    # row_val_max_size = [
-    #     (r, nlabels.data[i0:i1])
-    #     for r, i0, i1, c in zip(rows, *_indices, _counts) if c >= max_group_size
-    # ]
+    # row_val_by_size = {}
+    # for r, i0, i1, c in zip(rows, *_indices, _counts):
+    #     val = row_val_by_size.get(c, None)
+    #     to_insert = (r, nlabels.data[i0:i1])
+    #     if val is None:
+    #         row_val_by_size[c] = [to_insert]
+    #     else:
+    #         val.append(to_insert)
     #
-    # rempty = len(row_val_by_size[0])
-    # if rempty > 0:
-    #     # sanity-check all rows exist / should not happen
-    #     logger.warning(f"row empty: {rempty}")
+    # from concurrent.futures import ProcessPoolExecutor
+    # num_threads = len(os.sched_getaffinity(0))
+    # with ProcessPoolExecutor(num_threads) as executor:
+    #     # futures = [executor.submit(_mode, r_v)
+    #     #            for c, r_v in row_val_by_size.items() if c > 2 and len(r_v) > 0]
     #
-    # # if rows of group size 1 exist, the mode filter always returns the 1st value
-    # if len(row_val_by_size[1]) > 0:
-    #     rows, rvals = map(np.asarray, zip(*row_val_by_size[1]))
-    #     labels_new[ids[rows]] = rvals[:, 0]
+    #     rempty = len(row_val_by_size.get(0, []))
+    #     if rempty > 0:
+    #         # sanity-check all rows exist / should not happen
+    #         logger.warning(f"row empty: {rempty}")
     #
-    # for r_v in row_val_by_size[2:]:
-    #     if len(r_v) > 0:
-    #         _rows, rvals = map(np.asarray, zip(*r_v))
-    #         mvals = mode(rvals, keepdims=True, axis=1)[0]
+    #     # if rows of group size 1 exist, the mode filter always returns the 1st value
+    #     if len(row_val_by_size.get(1, [])) > 0:
+    #         rows, rvals = map(np.asarray, zip(*row_val_by_size[1]))
+    #         labels_new[ids[rows]] = rvals[:, 0]
+    #
+    #     # for future in futures:
+    #     #     rows, mvals = future.result()
+    #     for rows, mvals in executor.map(
+    #             _mode,
+    #             (r_v for c, r_v in row_val_by_size.items() if c > 2),
+    #             chunksize=min(int(len(row_val_by_size)/num_threads), 16),
+    #     ):
+    #
     #         if mvals.size != 0:
-    #             labels_new[ids[_rows]] = mvals[:, 0]
+    #             labels_new[ids[rows]] = mvals[:, 0]
     #
-    # for row, mvals in map(lambda r: (r[0], mode(r[1], keepdims=True)[0]),
-    #                       row_val_max_size):
-    #     if mvals.size != 0:
-    #         labels_new[ids[row]] = mvals[0]
 
     # nbrs=np.squeeze(np.asarray(nbrs.todense())) # sparse matrix to dense matrix to np.array
     # nlabels=labels[nbrs]
