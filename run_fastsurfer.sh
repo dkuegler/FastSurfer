@@ -936,7 +936,7 @@ if [[ "$run_seg_pipeline" == "1" ]]
         cmd=($python "$hypvinndir/run_prediction.py" --sd "${sd}" --sid "${subject}"
              "${hypvinn_flags[@]}" "${allow_root[@]}" --threads "$threads" --async_io
              --batch_size "$batch_size" --seg_log "$seg_log" --device "$device"
-             --viewagg_device "$viewagg_device" --t1)
+             --viewagg_device "$viewagg" --t1)
         if [[ "$run_biasfield" == "1" ]]
           then
             cmd+=("$norm_name")
