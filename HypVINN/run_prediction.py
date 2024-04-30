@@ -233,7 +233,7 @@ def main(
         # Create output directory if it does not already exist.
         create_expand_output_directory(subject_dir, qc_snapshots)
         logger.info(
-            f"Running HypVINN segmentation pipeline on subject {sid}"
+            f"Running HypVINN pipeline with {mode} input on subject {sid}"
         )
         logger.info(f"Output will be stored in: {subject_dir}")
         logger.info(f"T1 image input {t1_path}")
