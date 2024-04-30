@@ -264,7 +264,6 @@ def main(
         ckpts = (ckpt_ax, ckpt_cor, ckpt_sag)
         for plane, _cfg_file, _ckpt_file in zip(PLANES, cfgs, ckpts):
             logger.info(f"{plane} model configuration from {_cfg_file}")
-            logger.info(f"{plane} model checkpoints from {_ckpt_file}")
             view_ops[plane] = {
                 "cfg": set_up_cfgs(_cfg_file, subject_dir, batch_size),
                 "ckpt": _ckpt_file,
@@ -324,56 +323,71 @@ def main(
         else:
             orig_path = t2_path
 
-        save_future: Future = pool.submit(
-            save_segmentation,
-            pred_classes,
+        save_segmentation(pred_classes,
             orig_path=orig_path,
             ras_affine=affine,
             ras_header=header,
             subject_dir=subject_dir,
             seg_file=hypo_segfile,
-            save_mask=True,
+            save_mask=True)
+
+        #TODO : the saved hypothalamus prediction (hypo_segfile) is required for stats and qc_snapshot
+        # Return prediction image so stats and qc plots can be run in parallel
+        # save_future: Future = pool.submit(
+        #     save_segmentation,
+        #     pred_classes,
+        #     orig_path=orig_path,
+        #     ras_affine=affine,
+        #     ras_header=header,
+        #     subject_dir=subject_dir,
+        #     seg_file=hypo_segfile,
+        #     save_mask=True,
+        # )
+        # save_future.add_done_callback(
+        #     lambda x: logger.info(
+        #         f"Prediction successfully saved in {x.result()} seconds."
+        #     ),
+        # )
+        # # if qc_snapshots:
+        #     qc_future: Optional[Future] = pool.submit(
+        #         plot_qc_images,
+        #         subject_qc_dir=subject_dir / "qc_snapshots",
+        #         orig_path=orig_path,
+        #         prediction_path= subject_dir / hypo_segfile,
+        #     )
+        #     qc_future.add_done_callback(
+        #         lambda x: logger.info(f"QC snapshots saved in {x.result()} seconds."),
+        #     )
+        # else:
+        #     qc_future = None
+
+        logger.info(
+            f"Processing segmentation finished in {time() - seg:0.4f} seconds."
         )
-        save_future.add_done_callback(
-            lambda x: logger.info(
-                f"Prediction successfully saved in {x.result()} seconds."
-            ),
-        )
-        if qc_snapshots:
-            qc_future: Optional[Future] = pool.submit(
-                plot_qc_images,
-                subject_qc_dir=subject_dir / "qc_snapshots",
-                orig_path=orig_path,
-                prediction_path=Path(hypo_segfile),
-            )
-            qc_future.add_done_callback(
-                lambda x: logger.info(f"QC snapshots saved in {x.result()} seconds."),
-            )
-        else:
-            qc_future = None
 
         logger.info("Computing stats")
         return_value = compute_stats(
             orig_path=orig_path,
-            prediction_path=Path(hypo_segfile),
+            prediction_path= subject_dir / hypo_segfile,
             stats_dir=subject_dir / "stats",
             threads=threads,
         )
         if return_value != 0:
             logger.error(return_value)
 
-        logger.info(
-            f"Processing segmentation finished in {time() - seg:0.4f} seconds."
-        )
+        if qc_snapshots:
+            plot_qc_images(subject_qc_dir=subject_dir / "qc_snapshots",
+                           orig_path=orig_path,
+                           prediction_path= subject_dir / hypo_segfile)
+
     except (FileNotFoundError, RuntimeError) as e:
         logger.info(f"Failed Evaluation on {subject_name}:")
         logger.exception(e)
     else:
-        if qc_future:
-            # finish qc
-            qc_future.result()
-        save_future.result()
-
+        # save_future.result()
+        # if qc_future:
+        #     # finish qc
+        #     qc_future.result()
         logger.info(
             f"Processing whole pipeline finished in {time() - start:.4f} seconds."
         )
@@ -483,8 +497,8 @@ def get_prediction(
     dim = model.get_max_size()
 
     # Coronal model
-    logger.info(f"Evaluating Coronal model, cpkt: "
-                f"{view_opts['coronal']['ckpt']}")
+    #logger.info(f"Evaluating Coronal model, cpkt: "
+    #            f"{view_opts['coronal']['ckpt']}")
 
     pred_shape = (dim, dim, dim, model.get_num_classes())
     # Set up tensor to hold probabilities and run inference
