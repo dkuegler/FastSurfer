@@ -153,9 +153,9 @@ def option_parse() -> argparse.ArgumentParser:
         advanced,
         "config",
         {
-            "coronal": Path("HypVINN/config/HypVINN_coronal_v1.0.0.yaml"),
-            "axial": Path("HypVINN/config/HypVINN_axial_v1.0.0.yaml"),
-            "sagittal": Path("HypVINN/config/HypVINN_sagittal_v1.0.0.yaml"),
+            "coronal": Path("HypVINN/config/HypVINN_coronal_v1.1.0.yaml"),
+            "axial": Path("HypVINN/config/HypVINN_axial_v1.1.0.yaml"),
+            "sagittal": Path("HypVINN/config/HypVINN_sagittal_v1.1.0.yaml"),
         },
         CHECKPOINT_PATHS_FILE,
     )
@@ -264,6 +264,7 @@ def main(
         ckpts = (ckpt_ax, ckpt_cor, ckpt_sag)
         for plane, _cfg_file, _ckpt_file in zip(PLANES, cfgs, ckpts):
             logger.info(f"{plane} model configuration from {_cfg_file}")
+            logger.info(f"{plane} model checkpoints from {_ckpt_file}")
             view_ops[plane] = {
                 "cfg": set_up_cfgs(_cfg_file, subject_dir, batch_size),
                 "ckpt": _ckpt_file,
