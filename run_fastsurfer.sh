@@ -667,12 +667,12 @@ fi
 
 if [[ -z "$hypo_segfile" ]]
   then
-    hypo_segfile="${sd}/${subject}/mri/cerebellum.CerebNet.nii.gz"
+    hypo_segfile="${sd}/${subject}/mri/hypothalamus.HypVINN.nii.gz"
 fi
 
 if [[ -z "$hypo_statsfile" ]]
   then
-    hypo_statsfile="${sd}/${subject}/stats/cerebellum.CerebNet.stats"
+    hypo_statsfile="${sd}/${subject}/stats/hypothalamus.HypVINN.stats"
 fi
 
 if [[ -z "$mask_name" ]]
