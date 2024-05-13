@@ -141,7 +141,7 @@ FLAGS:
 SEGMENTATION PIPELINE:
   --seg_only              Run only FastSurferVINN (generate segmentation, do not
                             run surface pipeline)
-  --seg_log <seg_log>     Log-file for the segmentation (FastSurferVINN, CerebNet)
+  --seg_log <seg_log>     Log-file for the segmentation (FastSurferVINN, CerebNet, HypVINN)
                             Default: \$SUBJECTS_DIR/\$sid/scripts/deep-seg.log
   --conformed_name <conf.mgz>
                           Name of the file in which the conformed input
@@ -376,6 +376,8 @@ case $key in
     ;;
     --reg_mode)
     mode=$(echo "$2" | tr "[:upper:]" "[:lower:]")
+    #TODO reg_mode flag showing Invalid with any input
+    #TODO qc_snap flag option not available
     if [[ "$mode" =~ /^(none|coreg|robust)$/ ]] ; then
       hypvinn_flags+=(--regmode "$mode")
     else
