@@ -20,7 +20,8 @@ from pathlib import Path
 import nibabel as nib
 import os
 import numpy as np
-
+from HypVINN.data_loader.data_utils import rescale_image
+from FastSurferCNN.data_loader import data_utils as du
 from FastSurferCNN.utils import logging
 from HypVINN.utils import ModalityMode, RegistrationMode
 
@@ -148,6 +149,12 @@ def hyvinn_preproc(
                 "Resolution of the T2 image will be interpolated "
                 "to the one of the T1 image."
             )
+
+        # Rescale image between 0 to 255 to reduce storage size, conform is done in the registration step
+        t2_orig, t2_data = du.load_image(t2_path, "T2 orig image")
+        t2_data = rescale_image(t2_data)
+        du.save_image(header_info= t2_orig.header,affine_info=t2_orig.affine,
+                      img_array= t2_data,save_as=t2_path,dtype=np.uint8)
 
         LOGGER.info("Registering T1 to T2 ...")
         t2_path = t1_to_t2_registration(
