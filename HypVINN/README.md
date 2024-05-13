@@ -65,7 +65,6 @@ Hypothalamic subfields segmentation pipeline
     ```
     python HypVINN/run_prediction.py  --sid test_subject --sd /output \
                                      --t1 /data/test_subject_t1_bias_field_corrected.nii.gz \
-                                     --reg_mode coreg \
                                      --batch_size 6
    ```
 
