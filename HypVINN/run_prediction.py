@@ -193,7 +193,7 @@ def main(
     t2 : Path, optional
         The path to the T2 image to process.
     orig_name : Path, optional
-        The original name of the input image.
+        The path to the T1 image to process or FastSurfer orig image.
     sid : str
         The subject ID.
     ckpt_ax : Path

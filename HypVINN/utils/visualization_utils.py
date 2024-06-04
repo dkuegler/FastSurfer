@@ -42,7 +42,7 @@ def remove_values_from_list(the_list, val):
 
 def get_lut(lookup_table_path: Path = HYPVINN_LUT):
     f"""
-    Retrieve a lookup table (LUT) from a file.
+    Retrieve a color lookup table (LUT) from a file.
 
     This function reads a file and constructs a lookup table (LUT) from it.
 
