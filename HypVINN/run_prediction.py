@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # IMPORTS
-import os.path
 from typing import TYPE_CHECKING, Optional, cast, Literal
 import argparse
 from pathlib import Path
@@ -32,7 +31,6 @@ from FastSurferCNN.utils.checkpoint import (
     load_checkpoint_config_defaults,
 )
 from FastSurferCNN.utils.common import assert_no_root, SerialExecutor
-from FastSurferCNN.utils.parser_defaults import FASTSURFER_ROOT
 
 from HypVINN.config.hypvinn_files import HYPVINN_SEG_NAME
 from HypVINN.data_loader.data_utils import hypo_map_label2subseg, rescale_image
@@ -46,8 +44,6 @@ from HypVINN.utils.mode_config import get_hypinn_mode
 from HypVINN.utils.preproc import hyvinn_preproc
 from HypVINN.utils.stats_utils import compute_stats
 from HypVINN.utils.visualization_utils import plot_qc_images
-
-_doc_HYPVINN_SEG_NAME = os.path.relpath(HYPVINN_SEG_NAME, FASTSURFER_ROOT)
 
 logger = logging.get_logger(__name__)
 
@@ -211,8 +207,8 @@ def main(
         The path to the coronal configuration file.
     cfg_sag : Path
         The path to the sagittal configuration file.
-    hypo_segfile : str, default="{_doc_HYPVINN_SEG_NAME}"
-        The name of the hypothalamus segmentation file. Default is {_doc_HYPVINN_SEG_NAME}.
+    hypo_segfile : str, default="{HYPVINN_SEG_NAME}"
+        The name of the hypothalamus segmentation file. Default is {HYPVINN_SEG_NAME}.
     allow_root : bool, default=False
         Whether to allow running as root user. Default is False.
     qc_snapshots : bool, optional
