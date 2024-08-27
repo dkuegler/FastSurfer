@@ -187,20 +187,12 @@ num_cpus_surf=1 # base number of cpus to use for surfaces (doubled if --parallel
 do_parallel="false"
 
 # PRINT USAGE if called without params
-if [[ $# -eq 0 ]]
-then
-  usage
-  exit
-fi
+if [[ $# -eq 0 ]] ; then usage ; exit ; fi
 
-if [ -z "${BASH_SOURCE[0]}" ]; then
-    THIS_SCRIPT="$0"
-else
-    THIS_SCRIPT="${BASH_SOURCE[0]}"
+if [ -z "${BASH_SOURCE[0]}" ]; then THIS_SCRIPT="$0"
+else THIS_SCRIPT="${BASH_SOURCE[0]}"
 fi
-
 set -e
-
 source "$(dirname "$THIS_SCRIPT")/stools.sh"
 
 # PARSE Command line
@@ -237,40 +229,27 @@ case $key in
   --partition)
     # make key lowercase
     lower_value=$(echo "$1" | tr '[:upper:]' '[:lower:]')
-    if [[ "$lower_value" =~ seg=* ]]
-    then
-      partition_seg=${1:4}
-    elif [[ "$lower_value" =~ surf=* ]]
-    then
-      partition_surf=${1:5}
-    else
-      partition=$1
+    if [[ "$lower_value" =~ seg=* ]] ; then partition_seg=${1:4}
+    elif [[ "$lower_value" =~ surf=* ]] ; then partition_surf=${1:5}
+    else partition=$1
     fi
     shift
     ;;
   --extra_singularity_options)
     # make key lowercase
     lower_value=$(echo "$1" | tr '[:upper:]' '[:lower:]')
-    if [[ "$lower_value" =~ seg=* ]]
-    then
-      extra_singularity_options_seg=${1:4}
-    elif [[ "$lower_value" =~ surf=* ]]
-    then
-      extra_singularity_options_surf=${1:5}
-    else
-      extra_singularity_options=$1
+    if [[ "$lower_value" =~ seg=* ]] ; then extra_singularity_options_seg=${1:4}
+    elif [[ "$lower_value" =~ surf=* ]] ; then extra_singularity_options_surf=${1:5}
+    else extra_singularity_options=$1
     fi
     shift
     ;;
   --time)
     # make key lowercase
     lower_value=$(echo "$1" | tr '[:upper:]' '[:lower:]')
-    if [[ "$lower_value" =~ ^seg=[0-9]+ ]]
-    then
-      timelimit_seg=${1:4}
+    if [[ "$lower_value" =~ ^seg=[0-9]+ ]] ; then timelimit_seg=${1:4}
     elif [[ "$lower_value" =~ surf=([0-9]+|[0-9]{0,1}(:[0-9]{2}){0,1}) ]]
-    then
-      timelimit_surf=${1:5}
+    then timelimit_surf=${1:5}
     else
       echo "Invalid parameter to --time: $1, must be seg|surf=<integer (minutes)>"
       exit 1
@@ -285,14 +264,8 @@ case $key in
   --mem)
     # make key lowercase
     lower_value=$(echo "$1" | tr '[:upper:]' '[:lower:]')
-    if [[ "$lower_value" =~ ^seg=[0-9]+$ ]]
-    then
-      mem_seg_cpu=${1:4}
-      mem_seg_gpu=${1:4}
-    elif [[ "$lower_value" =~ ^surf=[0-9]+$ ]]
-    then
-      mem_surf_parallel=${1:5}
-      mem_surf_noparallel=${1:5}
+    if [[ "$lower_value" =~ ^seg=[0-9]+$ ]] ; then mem_seg_cpu=${1:4} ; mem_seg_gpu=${1:4}
+    elif [[ "$lower_value" =~ ^surf=[0-9]+$ ]] ; then mem_surf_parallel=${1:5} ; mem_surf_noparallel=${1:5}
     else
       echo "Invalid parameter to --mem: $1, must be seg|surf=<integer (GigaBytes)>"
       exit 1
@@ -321,12 +294,9 @@ log ""
 
 make_hpc_work="false"
 
-if [[ -d "$hpc_work" ]]
-then
   # delete_hpc_work is true, if the hpc_work directory was created by this script.
-  delete_hpc_work="false"
-else
-  delete_hpc_work="true"
+if [[ -d "$hpc_work" ]] ; then delete_hpc_work="false"
+else delete_hpc_work="true"
 fi
 if [[ "$hpc_work" == "default" ]]
 then
@@ -520,7 +490,7 @@ fastsurfer_options=()
 log_name="slurm-submit"
 if [[ "$debug" == "true" ]]
 then
-  fastsurfer_options=("${fastsurfer_options[@]}" --debug)
+  fastsurfer_options+=(--debug)
 fi
 cleanup_depend=""
 surf_depend=""
@@ -532,10 +502,10 @@ then
   if [[ "$debug" == "true" ]]
   then
     log "Sending emails on ALL conditions"
-    slurm_email=("${slurm_email[@]}" --mail-type "ALL,ARRAY_TASKS")
+    slurm_email+=(--mail-type "ALL,ARRAY_TASKS")
   else
     log "Sending emails on END,FAIL conditions"
-    slurm_email=("${slurm_email[@]}" --mail-type "END,FAIL,ARRAY_TASKS")
+    slurm_email+=(--mail-type "END,FAIL,ARRAY_TASKS")
   fi
 fi
 jobarray_size="$(($((num_cases - 1)) / num_cases_per_task + 1))"
@@ -548,7 +518,7 @@ then
   else
     jobarray_option=("--array=1-$jobarray_size")
   fi
-  fastsurfer_options=("${fastsurfer_options[@]}" --batch "slurm_task_id/$jobarray_size")
+  fastsurfer_options+=(--batch "slurm_task_id/$jobarray_size")
   jobarray_depend="aftercorr"
 else
   jobarray_option=()
@@ -602,7 +572,7 @@ then
   then
     debug "Schedule SLURM job without gpu"
   else
-    seg_slurm_sched=(--gpus=1 "${seg_slurm_sched[@]}")
+    seg_slurm_sched+=(--gpus=1)
   fi
   log "chmod +x $seg_cmd_filename"
   chmod +x "$seg_cmd_file"
@@ -645,15 +615,14 @@ then
   else
     fastsurfer_surf_options=()
   fi
-  fastsurfer_surf_options=(# brun_fastsurfer options (outside of singularity)
-                           --subject_list "$hpc_work/scripts/subject_list"
-                           --parallel_subjects
-                           --statusfile "$hpc_work/scripts/subject_success"
-                           # run_fastsurfer options (inside singularity)
-                           --sd /data/cases --surf_only
-                           --fs_license /data/scripts/.fs_license
-                           "${fastsurfer_surf_options[@]}"
-                           "${POSITIONAL_FASTSURFER[@]}")
+  fastsurfer_surf_options+=(# brun_fastsurfer options (outside of singularity)
+                            --subject_list "$hpc_work/scripts/subject_list"
+                            --parallel_subjects
+                            --statusfile "$hpc_work/scripts/subject_success"
+                            # run_fastsurfer options (inside singularity)
+                            --sd /data/cases --surf_only
+                            --fs_license /data/scripts/.fs_license
+                            "${POSITIONAL_FASTSURFER[@]}")
   surf_cmd_filename=$hpc_work/scripts/slurm_cmd_surf.sh
   if [[ "$submit_jobs" == "true" ]]; then surf_cmd_file=$surf_cmd_filename
   else surf_cmd_file=$(mktemp)
