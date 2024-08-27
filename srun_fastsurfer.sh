@@ -185,11 +185,7 @@ EOF
 }
 
 # PRINT USAGE if called without params
-if [[ $# -eq 0 ]]
-then
-  usage
-  exit
-fi
+if [[ $# -eq 0 ]] ; then usage ; exit ; fi
 
 if [ -z "${BASH_SOURCE[0]}" ]; then THIS_SCRIPT="$0"
 else THIS_SCRIPT="${BASH_SOURCE[0]}"
@@ -503,7 +499,7 @@ fastsurfer_options=()
 log_name="slurm-submit"
 if [[ "$debug" == "true" ]]
 then
-  fastsurfer_options=("${fastsurfer_options[@]}" --debug)
+  fastsurfer_options+=(--debug)
 fi
 cleanup_depend=""
 surf_depend=""
@@ -515,10 +511,10 @@ then
   if [[ "$debug" == "true" ]]
   then
     log "Sending emails on ALL conditions"
-    slurm_email=("${slurm_email[@]}" --mail-type "ALL,ARRAY_TASKS")
+    slurm_email+=(--mail-type "ALL,ARRAY_TASKS")
   else
     log "Sending emails on END,FAIL conditions"
-    slurm_email=("${slurm_email[@]}" --mail-type "END,FAIL,ARRAY_TASKS")
+    slurm_email+=(--mail-type "END,FAIL,ARRAY_TASKS")
   fi
 fi
 jobarray_size="$(($((num_cases - 1)) / num_cases_per_task + 1))"
@@ -531,7 +527,7 @@ then
   else
     jobarray_option=("--array=1-$jobarray_size")
   fi
-  fastsurfer_options=("${fastsurfer_options[@]}" --batch "slurm_task_id/$jobarray_size")
+  fastsurfer_options+=(--batch "slurm_task_id/$jobarray_size")
   jobarray_depend="aftercorr"
 else
   jobarray_option=()
