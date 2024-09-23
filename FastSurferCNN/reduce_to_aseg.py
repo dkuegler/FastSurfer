@@ -23,6 +23,8 @@ import scipy.ndimage
 from skimage.filters import gaussian
 from skimage.measure import label
 
+from FastSurferCNN.utils.brainvolstats import mask_in_array
+
 HELPTEXT = """
 Script to reduce aparc+aseg to aseg by mapping cortex labels back to left/right GM.
 
@@ -134,10 +136,8 @@ def create_mask(aseg_data, dnum, enum):
     print("Creating dilated mask ...")
 
     # treat lateral orbital frontal and parsorbitalis special to avoid capturing too much of eye nerve
-    lat_orb_front_mask = np.logical_or(aseg_data == 2012, aseg_data == 1012)
-    parsorbitalis_mask = np.logical_or(aseg_data == 2019, aseg_data == 1019)
-    frontal_mask = np.logical_or(lat_orb_front_mask, parsorbitalis_mask)
-    print("Frontal region special treatment: ", format(np.sum(frontal_mask)))
+    frontal_mask = mask_in_array(aseg_data, [1012, 1019, 2012, 2019], max_index=1024 * 8)
+    print(f"Frontal region special treatment: {np.sum(frontal_mask)}")
 
     # reduce to binary
     datab = aseg_data > 0
@@ -145,10 +145,6 @@ def create_mask(aseg_data, dnum, enum):
     # dilate and erode
     datab = scipy.ndimage.binary_dilation(datab, np.ones((3, 3, 3)), iterations=dnum)
     datab = scipy.ndimage.binary_erosion(datab, np.ones((3, 3, 3)), iterations=enum)
-    # for x in range(dnum):
-    #    datab = binary_dilation(datab, np.ones((3, 3, 3)))
-    # for x in range(enum):
-    #    datab = binary_erosion(datab, np.ones((3, 3, 3)))
 
     # extract largest component
     labels = label(datab)

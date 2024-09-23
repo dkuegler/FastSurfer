@@ -800,93 +800,51 @@ def fuse_cortex_labels(aparc: npt.NDArray) -> np.ndarray:
     return aparc
 
 
-def split_cortex_labels(aparc: npt.NDArray) -> np.ndarray:
+def split_cortex_labels(aparc: torch.Tensor, max_distance: int = 10) -> torch.Tensor:
     """
     Splot cortex labels to completely de-lateralize structures.
 
     Parameters
     ----------
-    aparc : npt.NDArray
+    aparc : torch.Tensor
         Anatomical segmentation and parcellation from network.
+    max_distance : int, default=10
+        Maximum distance of classes to swap as measured from white matter in voxels (beyond that is not flipped).
 
     Returns
     -------
-    np.ndarray
+    torch.Tensor
         Re-lateralized aparc.
+
+    Notes
+    -----
+    The computational work scales linearly with the max_distance parameter.
     """
-    # Post processing - Splitting classes
-    # Quick Fix for 2026 vs 1026; 2029 vs. 1029; 2025 vs. 1025
-    rh_wm = get_largest_cc(aparc == 41)
-    lh_wm = get_largest_cc(aparc == 2)
-    rh_wm = regionprops(label(rh_wm, background=0))
-    lh_wm = regionprops(label(lh_wm, background=0))
-    centroid_rh = np.asarray(rh_wm[0].centroid)
-    centroid_lh = np.asarray(lh_wm[0].centroid)
 
-    labels_list = np.array(
-        [
-            1003,
-            1006,
-            1007,
-            1008,
-            1009,
-            1011,
-            1015,
-            1018,
-            1019,
-            1020,
-            1025,
-            1026,
-            1027,
-            1028,
-            1029,
-            1030,
-            1031,
-            1034,
-            1035,
-        ]
-    )
+    max_label = 256 * 32
+    kernel_size = max_distance * 2 + 1
 
-    for label_current in labels_list:
+    labels_to_correct = [
+        1003, 1006, 1007, 1008, 1009, 1011, 1015, 1018, 1019, 1020,
+        1025, 1026, 1027, 1028, 1029, 1030, 1031, 1034, 1035,
+    ]
+    correction_to_right = torch.zeros([max_label], dtype=aparc.dtype, device=aparc.device)
+    correction_to_right[labels_to_correct] = 1000
+    # create a gaussian kernel of the required kernel size
+    kernel = torch.signal.windows.gaussian(kernel_size, std=kernel_size / 4, dtype=torch.float).to(device=aparc.device)
+    kernel = torch.stack([kernel, kernel], dim=0).reshape((2, 1, kernel_size))
+    data = torch.stack([aparc == 2, aparc == 41], dim=-1).to(dtype=kernel.dtype, device=aparc.device)
 
-        label_img = label(aparc == label_current, connectivity=3, background=0)
+    for move_to_back in range(3):
+        data = data.moveaxis(move_to_back, -1)
+        _data = torch.nn.functional.conv1d(data.reshape((-1, 2, data.shape[-1])), kernel, stride=1, padding="same", groups=2)
+        data = _data.reshape(data.shape).moveaxis(-1, move_to_back)
 
-        for region in regionprops(label_img):
+    left_right_classification = data[..., 1] > data[..., 0]
 
-            if region.label != 0:  # To avoid background
-
-                if np.linalg.norm(
-                    np.asarray(region.centroid) - centroid_rh
-                ) < np.linalg.norm(np.asarray(region.centroid) - centroid_lh):
-                    mask = label_img == region.label
-                    aparc[mask] = label_current + 1000
-
-    # Quick Fixes for overlapping classes
-    aseg_lh = filters.gaussian_filter(
-        1000 * np.asarray(aparc == 2, dtype=float), sigma=3
-    )
-    aseg_rh = filters.gaussian_filter(
-        1000 * np.asarray(aparc == 41, dtype=float), sigma=3
-    )
-
-    lh_rh_split = np.argmax(
-        np.concatenate(
-            (np.expand_dims(aseg_lh, axis=3), np.expand_dims(aseg_rh, axis=3)), axis=3
-        ),
-        axis=3,
-    )
-
-    # Problematic classes: 1026, 1011, 1029, 1019
-    for prob_class_lh in [1011, 1019, 1026, 1029]:
-        prob_class_rh = prob_class_lh + 1000
-        mask_prob_class = (aparc == prob_class_lh) | (aparc == prob_class_rh)
-        mask_lh = np.logical_and(mask_prob_class, lh_rh_split == 0)
-        mask_rh = np.logical_and(mask_prob_class, lh_rh_split == 1)
-
-        aparc[mask_lh] = prob_class_lh
-        aparc[mask_rh] = prob_class_rh
-
-    return aparc
+    # update aparc with 1000 for right (left_right_classification) and affected labels (correction_to_right)
+    # by distance to left/right white matter
+    return aparc + left_right_classification * correction_to_right[aparc.to(torch.int32)]
 
 
 def unify_lateralized_labels(

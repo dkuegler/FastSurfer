@@ -369,7 +369,7 @@ class RunModelOnData:
 
     def get_prediction(
         self, image_name: str, orig_data: np.ndarray, zoom: np.ndarray | Sequence[int],
-    ) -> np.ndarray:
+    ) -> torch.Tensor:
         """
         Run and get prediction.
 
@@ -384,7 +384,7 @@ class RunModelOnData:
 
         Returns
         -------
-        np.ndarray
+        torch.Tensor
             Predicted classes.
         """
         shape = orig_data.shape + (self.get_num_classes(),)
@@ -408,10 +408,7 @@ class RunModelOnData:
         del pred_prob
         # map to freesurfer label space
         pred_classes = du.map_label2aparc_aseg(pred_classes, self.labels)
-        # return numpy array
-        # TODO: split_cortex_labels requires a numpy ndarray input, maybe we can also
-        #  use Mapper here
-        pred_classes = du.split_cortex_labels(pred_classes.cpu().numpy())
+        pred_classes = du.split_cortex_labels(pred_classes)
         return pred_classes
 
     def save_img(
@@ -706,9 +703,11 @@ def main(
         # Run model
         try:
             # The orig_t1_file is only used to populate verbose messages here
-            pred_data = eval.get_prediction(
+            pred_tensor = eval.get_prediction(
                 subject.orig_name, data_array, orig_img.header.get_zooms()
             )
+            # convert pred_tensor to numpy array
+            pred_data = pred_tensor.cpu().numpy()
             futures.append(
                 eval.async_save_img(
                     subject.segfile, pred_data, orig_img, dtype=np.int16
@@ -716,6 +715,7 @@ def main(
             )
 
             # Create aseg and brainmask
+            # =========================
 
             # There is a funny edge case in legacy FastSurfer 2.0, where the behavior is
             # not well-defined, if orig_name is an absolute path, but out_dir is not

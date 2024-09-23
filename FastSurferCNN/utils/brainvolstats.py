@@ -234,7 +234,7 @@ def read_transform_file(path: Path) -> "npt.NDArray[float]":
             f"The extension {path.suffix} is not '.xfm' or '.lta' and not recognized.")
 
 
-def mask_in_array(arr: "npt.NDArray", items: "npt.ArrayLike") -> "npt.NDArray[bool]":
+def mask_in_array(arr: "npt.NDArray", items: "npt.ArrayLike", *, max_index: int = -1) -> "npt.NDArray[bool]":
     """
     Efficient function to generate a mask of elements in `arr`, which are also in items.
 
@@ -244,6 +244,11 @@ def mask_in_array(arr: "npt.NDArray", items: "npt.ArrayLike") -> "npt.NDArray[bo
         An array with data, most likely int.
     items : npt.ArrayLike
         Which elements of `arr` in arr should yield True.
+
+    Other Parameters
+    ----------------
+    max_index: int, default=-1
+        Set the maximum index in the data (defautls to automatic detection).
 
     Returns
     -------
@@ -260,7 +265,8 @@ def mask_in_array(arr: "npt.NDArray", items: "npt.ArrayLike") -> "npt.NDArray[bo
     elif _items.size == 1:
         return np.asarray(arr == _items.flat[0])
     else:
-        max_index = max(np.max(items), np.max(arr))
+        if max_index == -1:
+            max_index = max(np.max(items), np.max(arr))
         if max_index >= 2 ** 16:
             logging.getLogger(__name__).warning(
                 f"labels in arr are larger than {2 ** 16 - 1}, this is not recommended!"
