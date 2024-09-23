@@ -148,7 +148,7 @@ def create_mask(aseg_data: np.ndarray[ShapeType, _TDType], dnum: int, enum: int)
     # treat lateral orbital frontal and parsorbitalis special to avoid capturing too much of eye nerve
     lat_orb_front_mask = [2012, 1012]
     parsorbitalis_mask = [2019, 1019]
-    frontal_mask = mask_in_array(aseg_data, lat_orb_front_mask + parsorbitalis_mask)
+    frontal_mask = mask_in_array(aseg_data, lat_orb_front_mask + parsorbitalis_mask, max_index=1024 * 8)
     LOGGER.info(f"Frontal region special treatment: {np.sum(frontal_mask)}")
 
     # reduce to binary
@@ -157,10 +157,6 @@ def create_mask(aseg_data: np.ndarray[ShapeType, _TDType], dnum: int, enum: int)
     # dilate and erode
     datab = scipy.ndimage.binary_dilation(datab, np.ones((3, 3, 3)), iterations=dnum)
     datab = scipy.ndimage.binary_erosion(datab, np.ones((3, 3, 3)), iterations=enum)
-    # for x in range(dnum):
-    #    datab = binary_dilation(datab, np.ones((3, 3, 3)))
-    # for x in range(enum):
-    #    datab = binary_erosion(datab, np.ones((3, 3, 3)))
 
     # extract largest component
     labels = label(datab)
