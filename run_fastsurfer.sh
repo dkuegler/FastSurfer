@@ -441,10 +441,6 @@ case $key in
     ;;
   --no_fs_t1) surf_flags=("${surf_flags[@]}" "--no_fs_T1") ;;
 
-  # temporary segstats development flag
-  --segstats_legacy)
-    surf_flags=("${surf_flags[@]}" "$key")
-    ;;
   *)    # unknown option
     # if not empty arguments, error & exit
     if [[ "$key" != "" ]] ; then echo "ERROR: Flag '$key' unrecognized." ;  exit 1 ; fi
