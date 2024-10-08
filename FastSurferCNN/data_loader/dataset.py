@@ -463,7 +463,7 @@ class MultiScaleDatasetVal(Dataset):
         Get scaling factor to match original resolution of input image to final resolution of FastSurfer base network.
 
         Input resolution is taken from voxel size in image header.
-        
+
         Parameters
         ----------
         img_zoom : np.ndarray
