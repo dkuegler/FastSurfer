@@ -285,7 +285,7 @@ def main(
     futures: dict[str, Future[str | MessageBuffer | VersionDict]] = {}
 
     with ThreadPoolExecutor() as pool:
-        futures["version"] = pool.submit(read_and_close_version, project_file)
+        futures["version"] = pool.submit(read_version_and_close, project_file)
         # if we do not have git, try VERSION file else git sha and branch
         if has_git() and not prefer_cache:
             git_rev_parse_cmd = ["git", "rev-parse", "--short", "HEAD"]
@@ -509,7 +509,7 @@ def filter_git_status(git_process) -> str:
     )
 
 
-def read_and_close_version(project_file: TextIO | PathLike | None = None) -> str:
+def read_version_and_close(project_file: TextIO | PathLike | None = None) -> str:
     """
     Read and close the version from the pyproject file. Also fill default.
 

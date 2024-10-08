@@ -9,7 +9,7 @@ Welcome to FastSurfer!
 
 Overview
 --------
-This README contains all information needed to run FastSurfer - a fast and accurate deep-learning based neuroimaging pipeline. FastSurfer provides a fully compatible [FreeSurfer](https://freesurfer.net/) alternative for volumetric analysis (within minutes) and surface-based thickness analysis (within only around 1h run time). 
+FastSurfer enables fast and accurate segmentation and analysis of structural MRI with a deep-learning based neuroimaging pipeline. Since FastSurfer is fully compatible with [FreeSurfer](https://freesurfer.net/), FastSurfer is a substantially faster alternative for volumetric analysis (within minutes) and surface-based thickness analysis (within only around 1h run time). 
 FastSurfer is transitioning to sub-millimeter resolution support throughout the pipeline.
 
 The FastSurfer pipeline consists of two main parts for segmentation and surface reconstruction.  
@@ -18,7 +18,7 @@ The FastSurfer pipeline consists of two main parts for segmentation and surface 
 - the surface sub-pipeline (`recon-surf`) reconstructs cortical surfaces, maps cortical labels and performs a traditional point-wise and ROI thickness analysis. 
 
 ### Segmentation Modules
-- approximately 5 minutes (GPU), `--seg_only` only runs this part. 
+- approximately 5 minutes (GPU, all modules), `--seg_only` only runs this part. 
  
 Modules (all run by default):
 1. `asegdkt:` [FastSurferVINN](FastSurferCNN/README.md) for whole brain segmentation (deactivate with `--no_asegdkt`)
@@ -63,9 +63,9 @@ Getting started
 ### Installation 
 There are three ways to run FastSurfer (links are to installation instructions):
 
-1. For Linux and Windows users, we recommend running FastSurfer in a container [Singularity/Apptainer](doc/overview/INSTALL.md#singularity) or [Docker](doc/overview/INSTALL.md#docker): (OS: [Linux](doc/overview/INSTALL.md#linux), [Windows](doc/overview/INSTALL.md#windows), [MacOS on Intel](doc/overview/INSTALL.md#docker-currently-only-supported-for-intel-cpus)),
-2. for macOS users, we recommend [installing the FastSurfer package](doc/overview/INSTALL.md#package), and
-3. for developers, the native install gives full control (only documented for [Linux](doc/overview/INSTALL.md#native-ubuntu-2004-or-ubuntu-2204)).
+1. For Linux and Windows users, we recommend running FastSurfer in a container Singularity/Apptainer ([Linux](doc/overview/INSTALL.md#singularity-or-apptainer-linux), [Windows](doc/overview/INSTALL.md#singularity-or-apptainer-windows)) or Docker ([Linux](doc/overview/INSTALL.md#docker-linux), [Windows](doc/overview/INSTALL.md#docker-cpu-windows), [MacOS on Intel](doc/overview/INSTALL.md#docker-currently-only-supported-for-intel-cpus-macos)),
+2. for macOS users, we recommend [installing the FastSurfer package](doc/overview/INSTALL.md#package-macos), and
+3. for developers, the native installation gives full control (only documented for [Linux](doc/overview/INSTALL.md#native-linux)).
 
 The images we provide on [DockerHub](https://hub.docker.com/r/deepmi/fastsurfer) conveniently include everything needed for FastSurfer. You will also need a [FreeSurfer license](https://surfer.nmr.mgh.harvard.edu/fswiki/License) file for the [Surface pipeline](#surface-reconstruction). We have detailed per-OS Installation instructions in the [INSTALL.md](doc/overview/INSTALL.md) file.
 

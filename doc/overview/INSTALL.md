@@ -4,7 +4,7 @@ FastSurfer is a pipeline for the segmentation of human brain MRI data. It consis
 
 The preferred way of installing and running FastSurfer is via Singularity or Docker containers on a Linux host system (with a GPU). We provide pre-build images at Dockerhub for various application cases: i) for only the segmentation (both GPU and CPU), ii) for only the CPU-based recon-surf pipeline, and iii) for the full pipeline (GPU or CPU).
 
-We also provide information on a native install on some operating systems, but since dependencies may vary, this can produce results different from our testing environment and we may not be able to support you if things don't work. Our testing is performed on Ubuntu 22.04 via our provided Docker images.
+We also provide information on a native installation on some operating systems, but since dependencies may vary, this can produce results different from our testing environment and we may not be able to support you if things don't work. Our testing is performed on Ubuntu 22.04 via our provided Docker images.
 
 
 Linux
@@ -15,7 +15,7 @@ Minimum System Spec: 8 GB system memory (this requires running FastSurfer on the
 
 Non-NVIDIA GPU architectures (AMD) are experimental and not officially supported, but seem to work well also.
 
-### Singularity (or Apptainer)
+### Singularity (or Apptainer, Linux)
 Assuming you have singularity installed already (by a system admin), you can build a Singularity image easily from our Dockerhub images. Run this command from a directory where you want to store singularity images:
 
 ```bash
@@ -26,7 +26,7 @@ Additionally, [the Singularity documentation](SINGULARITY.md) contains detailed 
 [Example 1](EXAMPLES.md#example-1-fastsurfer-singularity-or-apptainer) explains how to run FastSurfer (for the full pipeline you will also need a FreeSurfer .license file!) and you can find details on how to build your own images here: [Docker](../../tools/Docker/README.md) and [Singularity](SINGULARITY.md).
 
 
-### Docker
+### Docker (Linux)
 This is very similar to Singularity. Assuming you have Docker installed (by a system admin) you just need to pull one of our pre-build Docker images from dockerhub:
 
 ```bash
@@ -38,8 +38,11 @@ docker pull deepmi/fastsurfer:latest
 If you are using the **rootless mode**, you have to install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) and follow the [configuration for the rootless mode](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html#rootless-mode). Otherwise, running FastSurfer with Docker will give you this error message ```docker: Error response from daemon: could not select device driver "" with capabilities: [[gpu]]```.
 
 
-### Native (Ubuntu 20.04 or Ubuntu 22.04)
-In a native install you need to install all dependencies (distro packages, FreeSurfer in the supported version, python dependencies) yourself. Here we will walk you through what you need.
+### Native (Linux)
+
+We tested and use Ubuntu 22.04 and 24.04, but other distributions should work with minimal adaptations.
+
+For a native installation you need to install all dependencies (distro packages, FreeSurfer in the supported version, python dependencies) yourself. Here we will walk you through what you need.
 
 #### 1. System Packages
 You will need a few additional packages that may be missing on your system (for this you need sudo access or ask a system admin):
@@ -137,7 +140,7 @@ To run the full pipeline, you will need to install FreeSurfer (we recommend and 
 
 Make sure, the `${FREESURFER_HOME}` environment variable is set, so FastSurfer finds the FreeSurfer binaries.
 
-### AMD GPUs (experimental)
+### AMD GPUs (experimental, Linux)
 We have successfully run the segmentation on an AMD GPU (Radeon Pro W6600) using ROCm. For this to work you need to make sure you are using a supported (or semi-supported) GPU and the correct kernel version. AMD kernel modules need to be installed on the host system according to ROCm installation instructions and additional groups need to be setup and your user added to them, see https://rocm.docs.amd.com/projects/install-on-linux/en/latest/ .
 
 Build the Docker container with ROCm support.
@@ -163,7 +166,8 @@ Recommended System Spec: Mac with Apple Silicon M-Chip and 16 GB system memory.
 
 For older Intel CPUs, we only support cpu-only, which will be 2-4 times slower.
 
-### Docker (currently only supported for Intel CPUs)
+### Docker (currently only supported for Intel CPUs, MacOS)
+
 Docker can be used on Intel Macs as it should be similarly fast as a native install there. It would allow you to run the full pipeline.
 
 First, install [Docker Desktop for Mac](https://docs.docker.com/get-docker/).
@@ -177,7 +181,7 @@ docker pull deepmi/fastsurfer:latest
 
 Continue with the example in [Example 2](EXAMPLES.md#example-2-fastsurfer-docker).
 
-### Package
+### Package (MacOS)
 
 #### 1. Requirements
 FastSurfer requires pre-installed python3.10+ and bash (at least 3.2).
@@ -219,7 +223,8 @@ This will be at least twice as fast as `--device cpu`. Currently setting the fal
 Windows
 -------
 
-### Docker (CPU version)
+### Docker (CPU, Windows)
+
 In order to run FastSurfer on your Windows system using docker make sure that you have:
 * [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
 * [Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
@@ -229,7 +234,7 @@ installed and running.
 After everything is installed, start Windows PowerShell and run the following command to pull the CPU Docker image (check on [dockerhub](https://hub.docker.com/r/deepmi/fastsurfer/tags) what version tag is most recent for cpu):
 
 ```bash
-docker pull deepmi/fastsurfer:cpu-latest
+docker pull deepmi/fastsurfer:cpu-v{{FASTSURFER_VERSION}}
 ```
 
 Now you can run Fastsurfer the same way as described in [Example 2](EXAMPLES.md#example-2-fastsurfer-docker) for the CPU build, for example:
@@ -247,7 +252,7 @@ Note, the [system requirements](https://github.com/Deep-MI/FastSurfer#system-req
 
 This was tested using Windows 10 Pro version 21H1 and the WSL Ubuntu 20.04  distribution
 
-### Docker (GPU version)
+### Docker (GPU, Windows)
 In addition to the requirements from the CPU version, you also need to make sure that you have:
 * Windows 11 or Windows 10 21H2 or greater,
 * the latest WSL Kernel or at least 4.19.121+ (5.10.16.3 or later for better performance and functional fixes),
