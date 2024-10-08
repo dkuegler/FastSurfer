@@ -154,10 +154,9 @@ class Inference:
             device = self.default_device
 
         # Set up model
-        self._model_not_init = build_model(
-            self.cfg
-        )  # ~ model = FastSurferCNN(params_network)
-        self._model_not_init.to(device)
+        # model = FastSurferCNN(params_network)
+        self._model_not_init = build_model(self.cfg)
+        self._model_not_init.to(device, non_blocking=True)
         self.device = None
 
     def set_cfg(self, cfg: yacs.config.CfgNode):
@@ -171,14 +170,16 @@ class Inference:
         """
         self.cfg = cfg
 
-    def to(self, device: torch.device | None = None):
+    def to(self, device: torch.device | None = None, non_blocking: bool = False):
         """
         Move and/or cast the parameters and buffers.
 
         Parameters
         ----------
-        device : Optional[torch.device]
+        device : torch.device, optional
             The desired device of the parameters and buffers in this module (Default value = None).
+        non_blocking : bool, default=False
+            Whether moving the data should be non_blocking.
         """
         if self.model_parallel:
             raise RuntimeError(
@@ -186,7 +187,7 @@ class Inference:
             )
         _device = self.default_device if device is None else device
         self.device = _device
-        self.model.to(device=_device)
+        self.model.to(device=_device, non_blocking=non_blocking)
 
     def load_checkpoint(self, ckpt: str | os.PathLike):
         """
@@ -207,11 +208,11 @@ class Inference:
         # workaround for mps (directly loading to map_location=mps results in zeros)
         device = self.device
         if self.device.type == "mps":
-            self.model.to("cpu")
+            self.model.to("cpu", non_blocking=True)
             device = "cpu"
         else:
             # make sure the model is, where it is supposed to be
-            self.model.to(self.device)
+            self.model.to(self.device, non_blocking=True)
 
         # WARNING: weights_only=False can cause unsafe code execution, but here the
         # checkpoint can be considered to be from a safe source
@@ -220,7 +221,7 @@ class Inference:
 
         # workaround for mps (move the model back to mps)
         if self.device.type == "mps":
-            self.model.to(self.device)
+            self.model.to(self.device, non_blocking=True)
 
         if self.model_parallel:
             self.model = torch.nn.DataParallel(self.model)
@@ -366,14 +367,11 @@ class Inference:
         log_batch_idx = None
         with logging_redirect_tqdm():
             try:
-                for batch_idx, batch in tqdm(
-                    enumerate(val_loader), total=len(val_loader), unit="batch"
-                ):
+                for batch_idx, batch in tqdm(enumerate(val_loader), total=len(val_loader), unit="batch(s)"):
                     log_batch_idx = batch_idx
                     # move data to the model device
-                    images, scale_factors = batch["image"].to(self.device), batch[
-                        "scale_factor"
-                    ].to(self.device)
+                    images = batch["image"].to(self.device, non_blocking=True)
+                    scale_factors = batch["scale_factor"].to(self.device, non_blocking=True)
 
                     # predict the current batch, outputs logits
                     pred = self.model(images, scale_factors, out_scale)
@@ -387,9 +385,7 @@ class Inference:
                         )
 
                     # permute the prediction into the out slice order
-                    pred = pred.permute(*self.permute_order[plane]).to(
-                        out.device
-                    )  # the to-operation is implicit
+                    pred = pred.permute(*self.permute_order[plane]).to(out.device, non_blocking=True)
 
                     # cut prediction to the image size
                     pred = pred[pred_ii]
@@ -445,7 +441,7 @@ class Inference:
 
         Returns
         -------
-        toch.Tensor
+        torch.Tensor
             Prediction probability tensor.
         """
         # Set up DataLoader

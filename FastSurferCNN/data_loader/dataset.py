@@ -56,9 +56,7 @@ class MultiScaleOrigDataThickSlices(Dataset):
         transforms : Optional
             Transformer for the image. Defaults to None.
         """
-        assert (
-                orig_data.max() > 0.8
-        ), f"Multi Dataset - orig fail, max removed {orig_data.max()}"
+        assert orig_data.max() > 0.8, f"Multi Dataset - orig fail, max removed {orig_data.max()}"
         self.plane = cfg.DATA.PLANE
         self.slice_thickness = cfg.MODEL.NUM_CHANNELS // 2
         self.base_res = cfg.MODEL.BASE_RES
