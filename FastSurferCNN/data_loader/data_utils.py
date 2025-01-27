@@ -17,7 +17,7 @@
 from collections import defaultdict
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import cast, overload
 
 import nibabel as nib
 import numpy as np
@@ -773,9 +773,9 @@ def fuse_cortex_labels(aparc: npt.NDArray) -> np.ndarray:
     return aparc
 
 
-def split_cortex_labels(aparc: torch.Tensor, max_distance: int = 10) -> torch.Tensor:
+def split_cortex_labels(aparc: torch.Tensor, max_distance: int = 10) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    Splot cortex labels to completely de-lateralize structures.
+    Split cortex labels to completely de-lateralize structures.
 
     Parameters
     ----------
@@ -788,6 +788,8 @@ def split_cortex_labels(aparc: torch.Tensor, max_distance: int = 10) -> torch.Te
     -------
     torch.Tensor
         Re-lateralized aparc.
+    torch.Tensor
+        The left/right classification output (
 
     Notes
     -----
@@ -813,11 +815,12 @@ def split_cortex_labels(aparc: torch.Tensor, max_distance: int = 10) -> torch.Te
         _data = torch.nn.functional.conv1d(data.reshape((-1, 2, data.shape[-1])), kernel, stride=1, padding="same", groups=2)
         data = _data.reshape(data.shape).moveaxis(-1, move_to_back)
 
-    left_right_classification = data[..., 1] > data[..., 0]
+    left_right_classification = data
+    left_right_mask = left_right_classification[..., 1] > left_right_classification[..., 0]
 
     # update aparc with 1000 for right (left_right_classification) and affected labels (correction_to_right)
     # by distance to left/right white matter
-    return aparc + left_right_classification * correction_to_right[aparc.to(torch.int32)]
+    return aparc + left_right_mask * correction_to_right[aparc.to(torch.int32)], left_right_classification
 
 
 def unify_lateralized_labels(
