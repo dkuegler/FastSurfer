@@ -806,7 +806,8 @@ def split_cortex_labels(aparc: torch.Tensor, max_distance: int = 10) -> tuple[to
     correction_to_right = torch.zeros([max_label], dtype=aparc.dtype, device=aparc.device)
     correction_to_right[labels_to_correct] = 1000
     # create a gaussian kernel of the required kernel size
-    kernel = torch.signal.windows.gaussian(kernel_size, std=kernel_size / 4, dtype=torch.float).to(device=aparc.device)
+    kernelf = lambda f: torch.signal.windows.gaussian(kernel_size, std=kernel_size / f, dtype=torch.float).to(device=aparc.device)
+    kernel = 0.25 * kernelf(4) + 0.75 * kernelf(8)
     kernel = torch.stack([kernel, kernel], dim=0).reshape((2, 1, kernel_size))
     data = torch.stack([aparc == 2, aparc == 41], dim=-1).to(dtype=kernel.dtype, device=aparc.device)
 
