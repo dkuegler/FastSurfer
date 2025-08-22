@@ -128,7 +128,7 @@ def make_parser() -> argparse.ArgumentParser:
     from FastSurferCNN.utils.arg_types import int_gt_zero
 
     parser = argparse.ArgumentParser(
-        description="compat-long-outputs.py takes a longitudinally processed subject and creates files "
+        description="compat_long_outputs.py takes a longitudinally processed subject and creates files "
                     "missing for other longitudinal processing like the hippocampal subfields stream of FreeSurfer.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -159,7 +159,7 @@ def make_parser() -> argparse.ArgumentParser:
                         help="Set openMP and ITK threads to <int>.")
     parser.add_argument("--fs_license", dest="fs_license", type=validate_existing_file,
                         help="Path to FreeSurfer license key file.")
-    parser.add_argument("--version", action="version", version=f"compat-long-outputs: {VERSION}")
+    parser.add_argument("--version", action="version", version=f"compat_long_outputs: {VERSION}")
 
     # Dev flags
     parser.add_argument("--ignore_fs_version", action="store_true",
@@ -221,7 +221,7 @@ def main(subjects_dir: Path, subject: str, fs_license: Path, threads: int = 1, i
     ignore_fs_version : bool, default=False
         Ignore FreeSurfer version if True.
     """
-    print(f"\ncompat-long-outputs: {VERSION}")
+    print(f"\ncompat_long_outputs: {VERSION}")
     print(f"sid {subject}")
     print()
 

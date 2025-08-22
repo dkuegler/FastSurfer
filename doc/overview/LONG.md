@@ -1,10 +1,10 @@
 # Longitudinal Processing
 
-FastSurfer has a dedicated pipeline to quantify longitudinal changes in T1-weighted MRI. FastSurfer's longitudinal pipeline outpeforms independent (cross sectional) processing of individual MRIs across time in both FastSurfer and FreeSurfer, as well as even the longitudional pipeline in FreeSurfer.
+FastSurfer has a dedicated pipeline to quantify longitudinal changes in T1-weighted MRI. FastSurfer's longitudinal pipeline outperforms independent (cross-sectional) processing of individual MRIs across time in both FastSurfer and FreeSurfer, as well as even the longitudinal pipeline in FreeSurfer.
 
 ## What is Longitudinal Processing
 
-In longitudinal studies, MRIs of the same participant are acquired at different time points. Usually the goal is to quantify potentially subtle anatomical changes representing early disease effects or effects of disease modifying therapies or drug studies. In these situations we know that most of the anatomy will be very similar, as compared to cross sectional differences between participants. Longitudinal processing, as opposed to independent processing of each MRI, tries to make use of the joint information to reduce variance across time, leading to more sensitive estimates of longitudinal changes. This methodological approach leads to increased statistical power to detect subtle changes and, therefore, permits to either find smaller effects or to reduce the number of particiants needed to detect such an effect - saving time and money. Our paper for the FreeSurfer longitudinal stream (Reuter et al. [2012](https://doi.org/10.1016/j.neuroimage.2012.02.084)) nicley highlights these advantages, such as increased reliability and sensitiviy and describes the general idea. 
+In longitudinal studies, MRIs of the same participant are acquired at different time points. Usually the goal is to quantify potentially subtle anatomical changes representing early disease effects or effects of disease modifying therapies or drug studies. In these situations we know that most of the anatomy will be very similar, as compared to cross sectional differences between participants. Longitudinal processing, as opposed to independent processing of each MRI, tries to make use of the joint information to reduce variance across time, leading to more sensitive estimates of longitudinal changes. This methodological approach leads to increased statistical power to detect subtle changes and, therefore, permits to either find smaller effects or to reduce the number of participants needed to detect such an effect - saving time and money. Our paper for the FreeSurfer longitudinal stream (Reuter et al. [2012](https://doi.org/10.1016/j.neuroimage.2012.02.084)) nicely highlights these advantages, such as increased reliability and sensitivity and describes the general idea. 
 
 Generally the idea is to: 
 - Align images across time robustly into an unbiased mid-space (Reuter et al. [2010](https://doi.org/10.1016/j.neuroimage.2010.07.020)).
@@ -46,7 +46,7 @@ The above command will, of course, be slightly different when using the preferre
 
 ```bash
 singularity exec --nv \
-                 --no-home \
+                 --no-mount cwd,home \
                  -B /home/user/my_mri_data:/data \
                  -B /home/user/my_fastsurfer_analysis:/output \
                  -B /home/user/my_fs_license_dir:/fs_license \
@@ -69,7 +69,7 @@ HOWEVER, this requires that you process these cases also through the longitudina
 ## Behind the Scenes
 
 `long_fastsurfer.sh` is just a helper script and will perform the following individual steps for you:
-1. [Template Init] It will prepare the subject template by calling `long_prepare_template.sh`:
+1. **Template Init**: It will prepare the subject template by calling `long_prepare_template.sh`:
    ```bash
    long_prepare_template.sh \
      --tid <templateID> \
@@ -77,17 +77,31 @@ HOWEVER, this requires that you process these cases also through the longitudina
      --tpids <tID1> <tID2>
    ```
    This will register (align) all time point images into the unbiased mid-space using `mri_robust_template`, after an initial segmentation and skull stripping. It will also create the template image, kind of a mean image across time. For single time point cases it will align the input into a standard upright position.
-2. [Template Seg] Next, the template image will be segmented via a call to `run_fastsurfer.sh --sid <templateID> --base --seg_only ...` where the `--base` flag indicates that the input image will be taken from the already existing template directory. 
-3. [Template Surf] This is followed by the surface processing of the template  `run_fastsurfer.sh --sid <templateID> --base --surf_only ...`, which can be combined with the previous step.
-4. [Long Seg] Next, the segmentation of each time point, which can theoretically run in parallel with the previous two steps, is performed `run_fastsurfer.sh --sid <tIDn> --long <templateID> --seg_only ...`,
-5. [Long Surf] Again followed by the surface processing for each time point: `run_fastsurfer.sh --<id <tIDn> --long <templateID> --surf_only`. This step needs to wait until 3. and 4. (for this time point) are finished. In this step, for example, surfaces are initialized with the ones obtained on the template above and only fine-tuned, instead of recreating them. 
+2. **Template Seg**: Next, the template image will be segmented via a call to `run_fastsurfer.sh --sid <templateID> --base --seg_only ...` where the `--base` flag indicates that the input image will be taken from the already existing template directory. 
+3. **Template Surf**: This is followed by the surface processing of the template  `run_fastsurfer.sh --sid <templateID> --base --surf_only ...`, which can be combined with the previous step.
+4. **Long Seg**: Next, the segmentation of each time point, which can theoretically run in parallel with the previous two steps, is performed `run_fastsurfer.sh --sid <tIDn> --long <templateID> --seg_only ...`,
+5. **Long Surf**: Again followed by the surface processing for each time point: `run_fastsurfer.sh --<id <tIDn> --long <templateID> --surf_only`. This step needs to wait until 3. and 4. (for this time point) are finished. In this step, for example, surfaces are initialized with the ones obtained on the template above and only fine-tuned, instead of recreating them. 
 
 Internally we use `brun_fastsurfer.sh` as a helper script to process multiple time points in parallel (in the LONG steps 4. and 5.). Here `--parallel_seg` can be passed to `long_fastsurfer.sh` to specify the number of parallel runs during the segmentation step (4) which is usually limited by GPU memory, if run on the GPU. Further `--parallel_surf` specifies the number of parallel surface runs on the CPU and is most impactful. It can be combined with `--threads_surf 2` (or higher) to switch on parallelization of the two hemispheres in each surface block. 
 
-## Final Statistics:
+## Final Statistics
 
 The final results will be located in `$SUBJECTS_DIR/tID1` ... for each time point. These directories will have the same structure as a regular FastSurfer/FreeSurfer output directory. Therefore, you can use the regular downstream analysis tools, e.g. to extract statistics from the stats files. Note, that the surfaces are already in vertex-correspondence across time for each participant. For group analysis one would still need to map thickness estimates to fsaverage spherical template (this is usually done with `mris_preproc`). For longitudinal statistics using the (recommended) linear mixed effects models see our R toolbox [FS LME R](https://github.com/Deep-MI/fslmer), which can also analyze the mass-univariate situation for e.g. cortical thickness maps. Alternatively use this Matlab package: [LME Matlab](https://github.com/NeuroStats/lme) and our matlab tools for time-to-even (survival) analysis: [Survival](https://github.com/NeuroStats/Survival).
 
+Note, that followup tools, e.g. Longitudinal Hippocampus and Amydala pipeline, require additional files. These files can be generated by running the [FastSurfer longitudinal outputs script `recon_surf/compat_long_outputs.py`](../scripts/compat_long_outputs.rst) on top of the longitudinal processing directory.
+```bash
+# Setup FASTSURFER and FREESURFER
+export FASTSURFER_HOME=/path/to/fastsurfer
+export FREESURFER_HOME=/path/to/freesurfer
+source $FREESURFER_HOME/SetUpFreeSurfer.sh
+
+# Define data directory
+export SUBJECTS_DIR=/home/user/my_fastsurfer_analysis
+
+# Run FastSurfer longitudinally
+python $FASTSURFER_HOME/recon_surf/compat-long-outputs.sh \
+    --tid <templateID>
+```
 ## References
 
 - Reuter, Schmansky, Rosas, Fischl

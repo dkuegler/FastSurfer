@@ -9,3 +9,4 @@ Advanced scripts
     hypvinn
     recon_surf
     segstats
+    compat_long_outputs
