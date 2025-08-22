@@ -14,9 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import argparse
 import os
 import sys
-import argparse
 from functools import lru_cache
 from pathlib import Path
 
@@ -47,16 +47,6 @@ def validate_existing_subjects_dir(value: str) -> Path:
     if not path.is_dir():
         raise argparse.ArgumentTypeError(f"Path is not a directory: {value}")
     return path
-
-def validate_subject_id(value: str) -> str:
-    """Validate subject ID format"""
-    if not value or not value.strip():
-        raise argparse.ArgumentTypeError("Subject ID cannot be empty")
-    # Remove any potentially problematic characters for filesystem
-    cleaned = value.strip()
-    if "/" in cleaned or "\\" in cleaned:
-        raise argparse.ArgumentTypeError("Subject ID cannot contain path separators")
-    return cleaned
 
 def check_freesurfer(check_version: bool = True) -> None:
     """Check if FreeSurfer is properly installed and version is supported"""
@@ -111,7 +101,7 @@ def get_voxel_size(image_file: Path) -> float:
         img = nib.load(str(image_file))
         return float(img.header.get_zooms()[0])
     except Exception as e:
-        raise FastSurferCompatError(f"ERROR: Could not read voxel size from {image_file}: {e}")
+        raise FastSurferCompatError(f"Could not read voxel size from {image_file}: {e}") from e
 
 @lru_cache
 def get_supported_freesurfer_version() -> str:
@@ -221,9 +211,7 @@ def main(subjects_dir: Path, subject: str, fs_license: Path, threads: int = 1, i
     ignore_fs_version : bool, default=False
         Ignore FreeSurfer version if True.
     """
-    print(f"\ncompat_long_outputs: {VERSION}")
-    print(f"sid {subject}")
-    print()
+    print(f"\ncompat_long_outputs: {VERSION}\nsid {subject}\n")
 
     try:
         # Check FreeSurfer
@@ -326,14 +314,14 @@ def main(subjects_dir: Path, subject: str, fs_license: Path, threads: int = 1, i
         print(f"Processing {subject} completed successfully!")
 
     except FastSurferCompatError as e:
-        print(str(e))
+        print(f"ERROR: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
         print("\nProcessing interrupted by user.")
         sys.exit(130)
     except Exception as e:
         from traceback import print_exception
-        print(f"Unexpected error:")
+        print("Unexpected error:")
         print_exception(e)
         sys.exit(1)
 
