@@ -276,7 +276,7 @@ def main(subjects_dir: Path, subject: str, fs_license: Path, threads: int = 1, i
         # mapped aparcDKT to vol (1:30 min)
         segfile = mdir / "aparc.DKTatlas+aseg.mapped.mgz"
         wm_segfile = mdir / "wmparc.DKTatlas.mapped.mgz"
-        threads_flags = ("--threads", threads)
+        threads_flags = ("--threads", str(threads))
 
         def hemi_flags(hemi: str, offset: int) -> list:
             return [
