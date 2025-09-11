@@ -171,7 +171,7 @@ def validate_inputs(subject_dir: Path):
     tpfile = subject_dir / "base-tps.fastsurfer"
     if not tpfile.exists():
         raise FastSurferCompatError(
-            f"{args.subject} is either not found in $SUBJECTS_DIR or it is not a longitudinal template directory "
+            f"{subject_dir.name} is either not found in $SUBJECTS_DIR or it is not a longitudinal template directory "
             f"(base), which needs to contain base-tps.fastsurfer file. Please ensure that the base (template) has been "
             f"created with long_prepare_template.sh."
         )
