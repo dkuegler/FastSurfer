@@ -75,7 +75,7 @@ def check_freesurfer(check_version: bool = True) -> None:
                     f"  source $FREESURFER_HOME/SetUpFreeSurfer.sh"
                 )
         else:
-            FastSurferCompatError("Could not find/read FreeSurfer build-stamp file.")
+            raise FastSurferCompatError("Could not find/read FreeSurfer build-stamp file.")
 
 def softlink_or_copy(source: str | Path, target: str | Path) -> None:
     """Create soft link or copy file if linking fails"""
