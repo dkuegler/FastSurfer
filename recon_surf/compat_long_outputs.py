@@ -280,7 +280,7 @@ def main(subjects_dir: Path, subject: str, fs_license: Path, threads: int = 1, i
 
         def hemi_flags(hemi: str, offset: int) -> list:
             return [
-                f"--{hemi}-annot", ldir / f"{hemi}.aparc.DKTatlas.mapped.annot", offset,
+                f"--{hemi}-annot", ldir / f"{hemi}.aparc.DKTatlas.mapped.annot", str(offset),
                 f"--{hemi}-cortex-mask", ldir / f"{hemi}.cortex.label",
                 f"--{hemi}-white", sdir / f"{hemi}.white", f"--{hemi}-pial", sdir / f"{hemi}.pial",
             ]
