@@ -99,7 +99,7 @@ source $FREESURFER_HOME/SetUpFreeSurfer.sh
 export SUBJECTS_DIR=/home/user/my_fastsurfer_analysis
 
 # Run FastSurfer longitudinally
-python $FASTSURFER_HOME/recon_surf/compat-long-outputs.sh \
+python $FASTSURFER_HOME/recon_surf/compat_long_outputs.py \
     --tid <templateID>
 ```
 ## References
