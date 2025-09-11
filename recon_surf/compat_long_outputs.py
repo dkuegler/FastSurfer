@@ -309,7 +309,7 @@ def main(subjects_dir: Path, subject: str, fs_license: Path, threads: int = 1, i
         softlink_or_copy(segfile.name, mdir / "aparc+aseg.mgz")
         softlink_or_copy("wmparc.DKTatlas.mapped.mgz", mdir / "wmparc.mgz")
 
-        softlink_or_copy(subjects_dir / "base-tps.fastsurfer", "base-tps")
+        softlink_or_copy(subject_dir / "base-tps.fastsurfer", "base-tps")
 
         print(f"Processing {subject} completed successfully!")
 
