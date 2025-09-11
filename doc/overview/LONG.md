@@ -98,7 +98,7 @@ source $FREESURFER_HOME/SetUpFreeSurfer.sh
 # Define data directory
 export SUBJECTS_DIR=/home/user/my_fastsurfer_analysis
 
-# Run FastSurfer longitudinally
+# Run compat_long_outputs.py script to create missing files and sym-links
 python $FASTSURFER_HOME/recon_surf/compat_long_outputs.py \
     --tid <templateID>
 ```
