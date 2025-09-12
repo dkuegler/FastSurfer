@@ -123,16 +123,16 @@ def make_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
                REFERENCES:
-               
+
                If you use this for research publications, please cite:
-               
+
                Henschel L, Conjeti S, Estrada S, Diers K, Fischl B, Reuter M, FastSurfer - A
                 fast and accurate deep learning based neuroimaging pipeline, NeuroImage 219
                 (2020), 117012. https://doi.org/10.1016/j.neuroimage.2020.117012
-                
+
                Henschel L, Kuegler D, Reuter M. FastSurferVINN: Building
                 Resolution-Independence into Deep Learning Segmentation Methods - A Solution
-                for HighRes Brain MRI. NeuroImage 251 (2022), 118933. 
+                for HighRes Brain MRI. NeuroImage 251 (2022), 118933.
                 http://dx.doi.org/10.1016/j.neuroimage.2022.118933
                """
     )
