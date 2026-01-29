@@ -485,13 +485,10 @@ pushd "$mdir" > /dev/null || ( echo "Could not change to $mdir" ; exit 1 )
   softlink_or_copy "orig.mgz" "rawavg.mgz" "$LF"
 popd > /dev/null || ( echo "Could not change to subject_dir" ; exit 1 )
 
-
-
 ### The following steps are now usually done outside recon-surf already by the segmentation pipeline.
 ### However, if these files such as mask, aseg.auto_noCCseg, orig_nu or talairach transforms don't
 ### exist, we recreate them here, so that this can run on other type of input where only a T1 and
 ### segmentation is provided. This may need update if it changes in the segmentation pipeline.
-
 
 # ============================= MASK & ASEG_noCC ========================================
 

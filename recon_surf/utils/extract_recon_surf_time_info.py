@@ -46,8 +46,8 @@ if __name__ == "__main__":
         "-i",
         "--input_file_path",
         type=Path,
-        default="scripts/recon-surf.log",
-        help="Path to recon-surf.log file",
+        default="scripts/timing.log",
+        help="Path to timing.log file",
     )
     parser.add_argument(
         "-o",
@@ -104,9 +104,7 @@ if __name__ == "__main__":
     else:
         output_file_path = args.output_file_path
 
-    print(
-        f"[INFO] Parsing file for recon_surf time information: {args.input_file_path}\n"
-    )
+    print(f"[INFO] Parsing file for recon_surf time information: {args.input_file_path}\n")
     if args.time_units not in ["s", "m"]:
         print("[WARN] Invalid time_units! Must be in s or m. Defaulting to m...")
         time_units = "m"
@@ -132,9 +130,7 @@ if __name__ == "__main__":
             try:
                 yaml_dict["subject_id"] = line_parts[line_parts.index("--sid") + 1]
             except ValueError:
-                print(
-                    "[WARN] Could not extract subject ID from log file! It will not be added to the output."
-                )
+                print("[WARN] Could not extract subject ID from log file! It will not be added to the output.")
 
         ## Process lines containing the timestamp_feature:
         if timestamp_feature in line and "cmdf" not in line:
